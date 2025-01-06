@@ -1,0 +1,33 @@
+{
+    "servers": [
+      {
+        "id": 0,
+        "network": "tcp",
+        "address": "0.0.0.0:10000"
+      },
+      {
+        "id": 1,
+        "network": "tcp",
+        "address": "0.0.0.0:10001"
+      },
+      {
+        "id": 2,
+        "network": "tcp",
+        "address": "0.0.0.0:10002"
+      }
+    ],
+    "clients": [
+      {
+        "id": 0,
+        "servers": [10, 11, 12]
+      },
+      {
+        "id": 1,
+        "servers": [10, 11, 12]
+      },
+      {
+        "id": 2,
+        "servers": [10, 11, 12]
+      }
+    ]
+  }
