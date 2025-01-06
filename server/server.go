@@ -28,8 +28,11 @@ type Request struct {
 	Client_ReadVector    []uint64
 	Client_WriteVector   []uint64
 
-	Gossip_ServerId   uint64
-	Gossip_Operations []Operation
+	Receive_Gossip_ServerId   uint64
+	Receive_Gossip_Operations []Operation
+
+	Acknowledge_Gossip_ServerId uint64
+	Acknowledge_Gossip_Index    uint64
 }
 
 type Reply struct {
@@ -47,24 +50,26 @@ type Server struct {
 	Self  *Connection
 	Peers []*Connection
 
-	VectorClock         []uint64
-	OperationsPerformed []Operation
-	MyOperations        []Operation
-	PendingOperations   []Operation
-	Data                uint64
-	mu                  sync.Mutex
+	VectorClock            []uint64
+	OperationsPerformed    []Operation
+	MyOperations           []Operation
+	PendingOperations      []Operation
+	Data                   uint64
+	GossipAcknowledgements []uint64
+	mu                     sync.Mutex
 }
 
 func New(id uint64, self *Connection, peers []*Connection) *Server {
 	server := &Server{
-		Id:                  id,
-		Self:                self,
-		Peers:               peers,
-		VectorClock:         make([]uint64, len(peers)),
-		MyOperations:        make([]Operation, 0),
-		OperationsPerformed: make([]Operation, 0),
-		PendingOperations:   make([]Operation, 0),
-		Data:                0,
+		Id:                     id,
+		Self:                   self,
+		Peers:                  peers,
+		VectorClock:            make([]uint64, len(peers)),
+		MyOperations:           make([]Operation, 0),
+		OperationsPerformed:    make([]Operation, 0),
+		PendingOperations:      make([]Operation, 0),
+		GossipAcknowledgements: make([]uint64, len(peers)),
+		Data:                   0,
 	}
 	return server
 }
@@ -285,11 +290,11 @@ func deleteAtIndex(l []Operation, index uint64) []Operation {
 func receiveGossip(server *Server, request *Request) Reply {
 	reply := Reply{}
 
-	if len(request.Gossip_Operations) == 0 {
+	if len(request.Receive_Gossip_Operations) == 0 {
 		return reply
 	}
 
-	server.PendingOperations = mergeOperations(server.PendingOperations, request.Gossip_Operations)
+	server.PendingOperations = mergeOperations(server.PendingOperations, request.Receive_Gossip_Operations)
 	latestVersionVector := append([]uint64(nil), server.VectorClock...)
 
 	i := uint64(0)
@@ -306,12 +311,15 @@ func receiveGossip(server *Server, request *Request) Reply {
 		i++
 	}
 
-	// server.PendingOperations = server.PendingOperations[i:]
 	return reply
 }
 
-func getGossipOperations(server *Server) []Operation {
-	return server.MyOperations
+func acknowledgeGossip(server *Server, request *Request) {
+	server.GossipAcknowledgements[request.Acknowledge_Gossip_ServerId] = request.Acknowledge_Gossip_Index
+}
+
+func getGossipOperations(server *Server, serverId uint64) []Operation {
+	return server.MyOperations[server.GossipAcknowledgements[serverId]:]
 }
 
 func (s *Server) ProcessRequest(request *Request, reply *Reply) error {
@@ -324,12 +332,18 @@ func (s *Server) ProcessRequest(request *Request, reply *Reply) error {
 		reply.Client_OperationType = response.Client_OperationType
 		reply.Client_ReadVector = response.Client_ReadVector
 		reply.Client_WriteVector = response.Client_WriteVector
-	} else {
+		s.mu.Unlock()
+	} else if request.RequestType == 1 {
 		receiveGossip(s, request)
+		request := Request{RequestType: 2, Acknowledge_Gossip_ServerId: s.Id, Acknowledge_Gossip_Index: uint64(len(request.Receive_Gossip_Operations))}
+		reply := Reply{}
+		s.mu.Unlock()
+		c, _ := rpc.Dial(s.Peers[request.Receive_Gossip_ServerId].Network, s.Peers[request.Receive_Gossip_ServerId].Address)
+		c.Call("Server.Acknowledge", &request, &reply)
+	} else if request.RequestType == 2 {
+		acknowledgeGossip(s, request)
+		s.mu.Unlock()
 	}
-
-	// fmt.Println(s.OperationsPerformed, s.MyOperations, "\n")
-	s.mu.Unlock()
 
 	return nil
 }
@@ -355,7 +369,7 @@ func (s *Server) Start() error {
 
 	go func() {
 		for {
-			ms := 50
+			ms := 10
 			time.Sleep(time.Duration(ms) * time.Millisecond)
 
 			s.mu.Lock()
@@ -364,19 +378,18 @@ func (s *Server) Start() error {
 				s.mu.Unlock()
 				continue
 			}
-			operations := append([]Operation{}, getGossipOperations(s)...)
 
 			s.mu.Unlock()
 
 			for i := range s.Peers {
 				if uint64(i) != uint64(s.Id) {
 					s.mu.Lock()
-					request := Request{RequestType: 1, Gossip_ServerId: s.Id, Gossip_Operations: operations}
+					request := Request{RequestType: 1, Receive_Gossip_ServerId: s.Id, Receive_Gossip_Operations: getGossipOperations(s, uint64(i))}
 					reply := Reply{}
 					s.mu.Unlock()
 
-					h, _ := rpc.Dial(s.Peers[i].Network, s.Peers[i].Address)
-					h.Call("Server.ProcessRequest", &request, &reply)
+					c, _ := rpc.Dial(s.Peers[i].Network, s.Peers[i].Address)
+					c.Call("Server.ProcessRequest", &request, &reply)
 				}
 			}
 		}

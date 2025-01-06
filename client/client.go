@@ -60,8 +60,8 @@ func (c *Client) Start() error {
 	i := uint64(0)
 	for i < uint64(100) {
 
-		c.WriteToServer(rand.Uint64(), uint64(i%uint64((len(c.Servers)))), 0)
-
+		c.WriteToServer(rand.Uint64(), uint64(i%uint64((len(c.Servers)))), 4)
+		time.Sleep(10 * time.Millisecond)
 		i++
 	}
 
