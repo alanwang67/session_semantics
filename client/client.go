@@ -42,7 +42,7 @@ func (c *Client) WriteToServer(value uint64, serverId uint64, sessionSemantic ui
 
 		h, _ := rpc.Dial(c.Servers[serverId].Network, c.Servers[serverId].Address)
 
-		h.Call("Server.ProcessRequest", &clientRequest, &clientReply)
+		h.Call("Server.RpcHandler", &clientRequest, &clientReply)
 
 		if clientReply.Client_Succeeded {
 			c.ReadVector = clientReply.Client_ReadVector

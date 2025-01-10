@@ -56,7 +56,7 @@ type Server struct {
 	PendingOperations      []Operation
 	Data                   uint64
 	GossipAcknowledgements []uint64
-	mu                     sync.Mutex
+	mu                     *sync.Mutex
 }
 
 func New(id uint64, self *Connection, peers []*Connection) *Server {
@@ -115,21 +115,6 @@ func compareOperations(o1 *Operation, o2 *Operation) bool {
 	return compareVersionVector(o1.VersionVector, o2.VersionVector)
 }
 
-func compareSlices(s1 []uint64, s2 []uint64) bool {
-	var output = true
-	var i = uint64(0)
-	var l = uint64(len(s1))
-
-	for i < l {
-		if s1[i] != s2[i] {
-			output = false
-		}
-		i++
-	}
-
-	return output
-}
-
 func maxTwoInts(x uint64, y uint64) uint64 {
 	if x > y {
 		return x
@@ -169,7 +154,7 @@ func dependencyCheck(TS []uint64, request *Request) bool {
 	panic("Invalid Session Type")
 }
 
-func ProcessClientRequest(server *Server, request *Request) Reply { // do we want to pass in a pointer or the entire object
+func ProcessClientRequest(server *Server, request *Request) Reply {
 	reply := Reply{}
 
 	if !(dependencyCheck(server.VectorClock, request)) {
@@ -230,8 +215,24 @@ func oneOffVersionVector(serverId uint64, v1 []uint64, v2 []uint64) bool {
 	return output
 }
 
+func equalSlices(s1 []uint64, s2 []uint64) bool {
+	var output = true
+	var i = uint64(0)
+	var l = uint64(len(s1))
+
+	for i < l {
+		if s1[i] != s2[i] {
+			output = false
+			break
+		}
+		i++
+	}
+
+	return output
+}
+
 func equalOperations(o1 *Operation, o2 *Operation) bool {
-	return (o1.OperationType == o2.OperationType) && compareSlices(o1.VersionVector, o2.VersionVector) && (o1.Data == o2.Data)
+	return (o1.OperationType == o2.OperationType) && equalSlices(o1.VersionVector, o2.VersionVector) && (o1.Data == o2.Data)
 }
 
 func binarySearch(s []Operation, needle *Operation) (uint64, bool) {
@@ -256,7 +257,10 @@ func sortedInsert(s []Operation, value Operation) []Operation {
 	if uint64(len(s)) == index {
 		return append(s, value)
 	} else {
-		right := append([]Operation{value}, s[index:]...)
+		// we need to do it like this since it could be dangerous if we reuse the slice again
+		// we can verify the other one likely by using an invariant that we won't reuse
+		// this would be O(n)
+		right := append([]Operation{value}, s[index:]...) // https://stackoverflow.com/questions/37334119/how-to-delete-an-element-from-a-slice-in-golang
 		result := append(s[:index], right...)
 		return result
 	}
@@ -283,6 +287,7 @@ func mergeOperations(l1 []Operation, l2 []Operation) []Operation {
 	return output[:prev]
 }
 
+// https://stackoverflow.com/questions/16248241/concatenate-two-slices-in-go
 func deleteAtIndex(l []Operation, index uint64) []Operation {
 	return append(l[:index], l[index+1:]...)
 }
@@ -299,7 +304,7 @@ func receiveGossip(server *Server, request *Request) Reply {
 
 	i := uint64(0)
 
-	for i < uint64(len(server.PendingOperations)) { // we need to perform an optimization here so that we go through the entire list, maybe a delete at index function
+	for i < uint64(len(server.PendingOperations)) {
 		if oneOffVersionVector(server.Id, latestVersionVector, server.PendingOperations[i].VersionVector) {
 			server.OperationsPerformed = mergeOperations(server.OperationsPerformed, []Operation{server.PendingOperations[i]})
 			server.VectorClock = maxTS(latestVersionVector, server.PendingOperations[i].VersionVector)
@@ -322,33 +327,57 @@ func getGossipOperations(server *Server, serverId uint64) []Operation {
 	return server.MyOperations[server.GossipAcknowledgements[serverId]:]
 }
 
-func (s *Server) ProcessRequest(request *Request, reply *Reply) error {
-	s.mu.Lock()
-
+func ProcessRequest(server Server, request Request) (Reply, []Request) {
 	if request.RequestType == 0 {
-		response := ProcessClientRequest(s, request)
-		reply.Client_Succeeded = response.Client_Succeeded
-		reply.Client_Data = response.Client_Data
-		reply.Client_OperationType = response.Client_OperationType
-		reply.Client_ReadVector = response.Client_ReadVector
-		reply.Client_WriteVector = response.Client_WriteVector
-		s.mu.Unlock()
+		outGoingreply := ProcessClientRequest(&server, &request)
+		outGoingRequests := make([]Request, 0)
+		return outGoingreply, outGoingRequests
 	} else if request.RequestType == 1 {
-		receiveGossip(s, request)
-		request := Request{RequestType: 2, Acknowledge_Gossip_ServerId: s.Id, Acknowledge_Gossip_Index: uint64(len(request.Receive_Gossip_Operations))}
-		reply := Reply{}
-		s.mu.Unlock()
-		c, _ := rpc.Dial(s.Peers[request.Receive_Gossip_ServerId].Network, s.Peers[request.Receive_Gossip_ServerId].Address)
-		c.Call("Server.Acknowledge", &request, &reply)
+		outGoingreply := receiveGossip(&server, &request)
+		outGoingRequests := make([]Request, 0)
+		outGoingRequests = append(outGoingRequests, Request{RequestType: 2, Acknowledge_Gossip_ServerId: server.Id, Acknowledge_Gossip_Index: uint64(len(request.Receive_Gossip_Operations))})
+		return outGoingreply, outGoingRequests
 	} else if request.RequestType == 2 {
-		acknowledgeGossip(s, request)
-		s.mu.Unlock()
+		acknowledgeGossip(&server, &request)
+		outGoingRequests := make([]Request, 0)
+		return Reply{}, outGoingRequests
+	} else if request.RequestType == 3 {
+		outGoingRequests := make([]Request, 0)
+		for i := range server.Peers {
+			if uint64(i) != uint64(server.Id) {
+				outGoingRequests = append(outGoingRequests, Request{RequestType: 1, Receive_Gossip_ServerId: server.Id, Receive_Gossip_Operations: getGossipOperations(&server, uint64(i))})
+			}
+		}
+		return Reply{}, outGoingRequests
+	}
+
+	panic("Not a valid request type")
+}
+
+func (s *Server) RpcHandler(request *Request, reply *Reply) error {
+	s.mu.Lock()
+	outGoingReply, outGoingRequest := ProcessRequest(*s, *request)
+	reply.Client_Succeeded = outGoingReply.Client_Succeeded
+	reply.Client_Data = outGoingReply.Client_Data
+	reply.Client_OperationType = outGoingReply.Client_OperationType
+	reply.Client_ReadVector = outGoingReply.Client_ReadVector
+	reply.Client_WriteVector = outGoingReply.Client_WriteVector
+
+	i := uint64(0)
+	l := uint64(len(outGoingRequest))
+
+	s.mu.Unlock()
+	for i < l {
+		c, _ := rpc.Dial(s.Peers[request.Receive_Gossip_ServerId].Network, s.Peers[request.Receive_Gossip_ServerId].Address)
+		c.Call("Server.RpcHandler", &outGoingRequest[i], &Reply{})
+		i++
 	}
 
 	return nil
 }
 
 // for testing purposes
+// How do lock's in structs work in go
 func (s *Server) PrintData(request *Request, reply *Reply) error {
 	s.mu.Lock()
 	fmt.Println(s.OperationsPerformed)
@@ -379,24 +408,18 @@ func (s *Server) Start() error {
 				continue
 			}
 
+			id := s.Id
+			request := Request{RequestType: 3}
+			reply := Reply{}
+
 			s.mu.Unlock()
 
-			for i := range s.Peers {
-				if uint64(i) != uint64(s.Id) {
-					s.mu.Lock()
-					request := Request{RequestType: 1, Receive_Gossip_ServerId: s.Id, Receive_Gossip_Operations: getGossipOperations(s, uint64(i))}
-					reply := Reply{}
-					s.mu.Unlock()
-
-					c, _ := rpc.Dial(s.Peers[i].Network, s.Peers[i].Address)
-					c.Call("Server.ProcessRequest", &request, &reply)
-				}
-			}
+			c, _ := rpc.Dial(s.Peers[id].Network, s.Peers[id].Address)
+			c.Call("Server.RpcHandler", &request, &reply)
 		}
 	}()
 
 	for {
 		rpc.Accept(l)
-
 	}
 }
