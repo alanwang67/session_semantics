@@ -88,8 +88,10 @@ func compareVersionVector(v1 []uint64, v2 []uint64) bool {
 	return output
 }
 
-func lexiographicCompare(v1 []uint64, v2 []uint64) bool {
+func lexiographicCompare(o1 Operation, o2 Operation) bool {
 	var output = true
+	var v1 = o1.VersionVector
+	var v2 = o2.VersionVector
 	var i = uint64(0)
 	var l = uint64(len(v1))
 	for i < l {
@@ -229,7 +231,7 @@ func binarySearch(s []Operation, needle Operation) (uint64, bool) {
 	var j = uint64(len(s))
 	for i < j {
 		mid := i + (j-i)/2
-		if lexiographicCompare(needle.VersionVector, s[mid].VersionVector) {
+		if lexiographicCompare(needle, s[mid]) {
 			i = mid + 1
 		} else {
 			j = mid
