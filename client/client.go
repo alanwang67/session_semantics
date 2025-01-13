@@ -6,17 +6,18 @@ import (
 	"net/rpc"
 	"time"
 
+	"github.com/alanwang67/session_semantics/protocol"
 	"github.com/alanwang67/session_semantics/server"
 )
 
 type Client struct {
 	Id          uint64
-	Servers     []*server.Connection
+	Servers     []*protocol.Connection
 	ReadVector  []uint64
 	WriteVector []uint64
 }
 
-func New(id uint64, servers []*server.Connection) *Client {
+func New(id uint64, servers []*protocol.Connection) *Client {
 	return &Client{
 		Id:          id,
 		Servers:     servers,
@@ -26,10 +27,8 @@ func New(id uint64, servers []*server.Connection) *Client {
 }
 
 func (c *Client) WriteToServer(value uint64, serverId uint64, sessionSemantic uint64) uint64 {
-	i := uint64(0)
-	l := uint64(10)
-
-	for i < l {
+	// order := rand.Perm(len(c.Servers))
+	for i := range uint64(10) {
 		clientRequest := server.Request{
 			Client_OperationType: 1,
 			Client_SessionType:   sessionSemantic,
@@ -40,35 +39,34 @@ func (c *Client) WriteToServer(value uint64, serverId uint64, sessionSemantic ui
 
 		clientReply := server.Reply{}
 
-		h, _ := rpc.Dial(c.Servers[serverId].Network, c.Servers[serverId].Address)
+		protocol.Invoke(*c.Servers[serverId], "Server.RpcHandler", &clientRequest, &clientReply)
 
-		h.Call("Server.RpcHandler", &clientRequest, &clientReply)
-
+		fmt.Println(clientReply)
 		if clientReply.Client_Succeeded {
 			c.ReadVector = clientReply.Client_ReadVector
 			c.WriteVector = clientReply.Client_WriteVector
 			return clientReply.Client_Data
 		}
-
-		i++
-	}
-
-	panic("We can not serve your request")
-}
-
-func (c *Client) Start() error {
-	i := uint64(0)
-	for i < uint64(100) {
-
-		c.WriteToServer(rand.Uint64(), uint64(i%uint64((len(c.Servers)))), 4)
 		time.Sleep(10 * time.Millisecond)
 		i++
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	panic("We are unable to serve your request")
+}
+
+func (c *Client) Start() error {
+	i := uint64(0)
+	for i < uint64(1000) {
+		c.WriteToServer(rand.Uint64(), uint64(i%uint64((len(c.Servers)))), 4)
+		// c.WriteToServer(rand.Uint64(), 0, 4)
+		time.Sleep(10 * time.Millisecond)
+		i++
+	}
+
+	time.Sleep(1000 * time.Millisecond)
 
 	i = uint64(0)
-	fmt.Println(len(c.Servers))
+
 	for i < uint64(len(c.Servers)) {
 		clientRequest := server.Request{}
 

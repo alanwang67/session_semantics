@@ -6,12 +6,9 @@ import (
 	"net/rpc"
 	"sync"
 	"time"
-)
 
-type Connection struct {
-	Network string
-	Address string
-}
+	"github.com/alanwang67/session_semantics/protocol"
+)
 
 type Operation struct {
 	OperationType uint64
@@ -33,6 +30,8 @@ type Request struct {
 
 	Acknowledge_Gossip_ServerId uint64
 	Acknowledge_Gossip_Index    uint64
+
+	Receiver_ServerId uint64
 }
 
 type Reply struct {
@@ -47,8 +46,8 @@ type Reply struct {
 
 type Server struct {
 	Id    uint64
-	Self  *Connection
-	Peers []*Connection
+	Self  *protocol.Connection
+	Peers []*protocol.Connection
 
 	VectorClock            []uint64
 	OperationsPerformed    []Operation
@@ -59,7 +58,7 @@ type Server struct {
 	mu                     *sync.Mutex
 }
 
-func New(id uint64, self *Connection, peers []*Connection) *Server {
+func New(id uint64, self *protocol.Connection, peers []*protocol.Connection) *Server {
 	server := &Server{
 		Id:                     id,
 		Self:                   self,
@@ -70,6 +69,7 @@ func New(id uint64, self *Connection, peers []*Connection) *Server {
 		PendingOperations:      make([]Operation, 0),
 		GossipAcknowledgements: make([]uint64, len(peers)),
 		Data:                   0,
+		mu:                     &sync.Mutex{},
 	}
 	return server
 }
@@ -88,10 +88,6 @@ func compareVersionVector(v1 []uint64, v2 []uint64) bool {
 	return output
 }
 
-func concurrentVersionVector(v1 []uint64, v2 []uint64) bool {
-	return !compareVersionVector(v1, v2) && !compareVersionVector(v2, v1)
-}
-
 func lexiographicCompare(v1 []uint64, v2 []uint64) bool {
 	var output = true
 	var i = uint64(0)
@@ -106,13 +102,6 @@ func lexiographicCompare(v1 []uint64, v2 []uint64) bool {
 	}
 
 	return output
-}
-
-func compareOperations(o1 *Operation, o2 *Operation) bool {
-	if concurrentVersionVector(o1.VersionVector, o2.VersionVector) {
-		return lexiographicCompare(o1.VersionVector, o2.VersionVector)
-	}
-	return compareVersionVector(o1.VersionVector, o2.VersionVector)
 }
 
 func maxTwoInts(x uint64, y uint64) uint64 {
@@ -134,7 +123,7 @@ func maxTS(t1 []uint64, t2 []uint64) []uint64 {
 	return output
 }
 
-func dependencyCheck(TS []uint64, request *Request) bool {
+func dependencyCheck(TS []uint64, request Request) bool {
 	if request.Client_SessionType == 0 { // Monotonic Reads
 		return compareVersionVector(TS, request.Client_ReadVector)
 	}
@@ -154,12 +143,12 @@ func dependencyCheck(TS []uint64, request *Request) bool {
 	panic("Invalid Session Type")
 }
 
-func ProcessClientRequest(server *Server, request *Request) Reply {
+func ProcessClientRequest(server Server, request Request) (Server, Reply) {
 	reply := Reply{}
 
 	if !(dependencyCheck(server.VectorClock, request)) {
 		reply.Client_Succeeded = false
-		return reply
+		return server, reply
 	}
 
 	if request.Client_OperationType == 0 {
@@ -169,7 +158,7 @@ func ProcessClientRequest(server *Server, request *Request) Reply {
 		reply.Client_ReadVector = maxTS(request.Client_ReadVector, server.VectorClock)
 		reply.Client_WriteVector = request.Client_WriteVector
 
-		return reply
+		return server, reply
 	} else {
 		server.VectorClock[server.Id] += 1
 		server.Data = request.Client_Data
@@ -180,15 +169,15 @@ func ProcessClientRequest(server *Server, request *Request) Reply {
 			Data:          server.Data,
 		}
 
-		server.OperationsPerformed = append(server.OperationsPerformed, op)
-		server.MyOperations = append(server.MyOperations, op) // we can reuse op because it should be immutable
+		server.OperationsPerformed = append(server.OperationsPerformed, op) // would we need to do anything here since we are mutating the underlying slice?
+		server.MyOperations = append(server.MyOperations, op)               // we can reuse op because it should be immutable
 
 		reply.Client_Succeeded = true
 		reply.Client_OperationType = 1
 		reply.Client_Data = server.Data
 		reply.Client_ReadVector = request.Client_ReadVector
 		reply.Client_WriteVector = append([]uint64(nil), server.VectorClock...)
-		return reply
+		return server, reply
 	}
 }
 
@@ -231,29 +220,29 @@ func equalSlices(s1 []uint64, s2 []uint64) bool {
 	return output
 }
 
-func equalOperations(o1 *Operation, o2 *Operation) bool {
+func equalOperations(o1 Operation, o2 Operation) bool {
 	return (o1.OperationType == o2.OperationType) && equalSlices(o1.VersionVector, o2.VersionVector) && (o1.Data == o2.Data)
 }
 
-func binarySearch(s []Operation, needle *Operation) (uint64, bool) {
+func binarySearch(s []Operation, needle Operation) (uint64, bool) {
 	var i = uint64(0)
 	var j = uint64(len(s))
 	for i < j {
 		mid := i + (j-i)/2
-		if compareOperations(needle, &s[mid]) {
+		if lexiographicCompare(needle.VersionVector, s[mid].VersionVector) {
 			i = mid + 1
 		} else {
 			j = mid
 		}
 	}
 	if i < uint64(len(s)) {
-		return i, equalOperations(&s[i], needle)
+		return i, equalOperations(s[i], needle)
 	}
 	return i, false
 }
 
 func sortedInsert(s []Operation, value Operation) []Operation {
-	index, _ := binarySearch(s, &value)
+	index, _ := binarySearch(s, value)
 	if uint64(len(s)) == index {
 		return append(s, value)
 	} else {
@@ -278,7 +267,7 @@ func mergeOperations(l1 []Operation, l2 []Operation) []Operation {
 
 	prev := 1
 	for curr := 1; curr < len(output); curr++ {
-		if !equalOperations(&output[curr-1], &output[curr]) {
+		if !equalOperations(output[curr-1], output[curr]) {
 			output[prev] = output[curr]
 			prev++
 		}
@@ -289,14 +278,16 @@ func mergeOperations(l1 []Operation, l2 []Operation) []Operation {
 
 // https://stackoverflow.com/questions/16248241/concatenate-two-slices-in-go
 func deleteAtIndex(l []Operation, index uint64) []Operation {
-	return append(l[:index], l[index+1:]...)
+	var ret = make([]Operation, 0)
+	ret = append(ret, l[:index]...)
+	return append(ret, l[index+1:]...)
 }
 
-func receiveGossip(server *Server, request *Request) Reply {
+func receiveGossip(server Server, request Request) (Server, Reply) {
 	reply := Reply{}
 
 	if len(request.Receive_Gossip_Operations) == 0 {
-		return reply
+		return server, reply
 	}
 
 	server.PendingOperations = mergeOperations(server.PendingOperations, request.Receive_Gossip_Operations)
@@ -316,39 +307,41 @@ func receiveGossip(server *Server, request *Request) Reply {
 		i++
 	}
 
-	return reply
+	return server, reply
 }
 
-func acknowledgeGossip(server *Server, request *Request) {
+func acknowledgeGossip(server Server, request Request) Server {
 	server.GossipAcknowledgements[request.Acknowledge_Gossip_ServerId] = request.Acknowledge_Gossip_Index
+	return server
 }
 
-func getGossipOperations(server *Server, serverId uint64) []Operation {
+func getGossipOperations(server Server, serverId uint64) []Operation {
 	return server.MyOperations[server.GossipAcknowledgements[serverId]:]
 }
 
-func ProcessRequest(server Server, request Request) (Reply, []Request) {
-	if request.RequestType == 0 {
-		outGoingreply := ProcessClientRequest(&server, &request)
+func ProcessRequest(server Server, request Request) (Server, Reply, []Request) {
+	if request.RequestType == 0 { // Regular client request
+		server, outGoingreply := ProcessClientRequest(server, request)
 		outGoingRequests := make([]Request, 0)
-		return outGoingreply, outGoingRequests
-	} else if request.RequestType == 1 {
-		outGoingreply := receiveGossip(&server, &request)
+		return server, outGoingreply, outGoingRequests
+	} else if request.RequestType == 1 { // receiving a gossip request
+		server, outGoingreply := receiveGossip(server, request)
 		outGoingRequests := make([]Request, 0)
-		outGoingRequests = append(outGoingRequests, Request{RequestType: 2, Acknowledge_Gossip_ServerId: server.Id, Acknowledge_Gossip_Index: uint64(len(request.Receive_Gossip_Operations))})
-		return outGoingreply, outGoingRequests
-	} else if request.RequestType == 2 {
-		acknowledgeGossip(&server, &request)
+		outGoingRequests = append(outGoingRequests, Request{RequestType: 2, Acknowledge_Gossip_ServerId: server.Id, Receiver_ServerId: request.Receive_Gossip_ServerId, Acknowledge_Gossip_Index: uint64(len(request.Receive_Gossip_Operations))})
+		return server, outGoingreply, outGoingRequests
+	} else if request.RequestType == 2 { // acknowledging a gossip request
+		server = acknowledgeGossip(server, request)
 		outGoingRequests := make([]Request, 0)
-		return Reply{}, outGoingRequests
-	} else if request.RequestType == 3 {
+		return server, Reply{}, outGoingRequests
+	} else if request.RequestType == 3 { // sending gossip request
 		outGoingRequests := make([]Request, 0)
 		for i := range server.Peers {
 			if uint64(i) != uint64(server.Id) {
-				outGoingRequests = append(outGoingRequests, Request{RequestType: 1, Receive_Gossip_ServerId: server.Id, Receive_Gossip_Operations: getGossipOperations(&server, uint64(i))})
+				index := uint64(i)
+				outGoingRequests = append(outGoingRequests, Request{RequestType: 1, Receive_Gossip_ServerId: server.Id, Receiver_ServerId: index, Receive_Gossip_Operations: getGossipOperations(server, index)})
 			}
 		}
-		return Reply{}, outGoingRequests
+		return server, Reply{}, outGoingRequests
 	}
 
 	panic("Not a valid request type")
@@ -356,22 +349,36 @@ func ProcessRequest(server Server, request Request) (Reply, []Request) {
 
 func (s *Server) RpcHandler(request *Request, reply *Reply) error {
 	s.mu.Lock()
-	outGoingReply, outGoingRequest := ProcessRequest(*s, *request)
+	// fmt.Println(s.GossipAcknowledgements)
+	ns, outGoingReply, outGoingRequest := ProcessRequest(*s, *request)
+	s.Id = ns.Id
+	s.Self = ns.Self
+	s.Peers = ns.Peers
+	s.VectorClock = ns.VectorClock
+	s.OperationsPerformed = ns.OperationsPerformed
+	s.MyOperations = ns.MyOperations
+	s.PendingOperations = ns.PendingOperations
+	s.Data = ns.Data
+	s.GossipAcknowledgements = ns.GossipAcknowledgements
+	s.mu = ns.mu
+
 	reply.Client_Succeeded = outGoingReply.Client_Succeeded
 	reply.Client_Data = outGoingReply.Client_Data
 	reply.Client_OperationType = outGoingReply.Client_OperationType
 	reply.Client_ReadVector = outGoingReply.Client_ReadVector
 	reply.Client_WriteVector = outGoingReply.Client_WriteVector
 
-	i := uint64(0)
-	l := uint64(len(outGoingRequest))
-
 	s.mu.Unlock()
-	for i < l {
-		c, _ := rpc.Dial(s.Peers[request.Receive_Gossip_ServerId].Network, s.Peers[request.Receive_Gossip_ServerId].Address)
-		c.Call("Server.RpcHandler", &outGoingRequest[i], &Reply{})
-		i++
-	}
+
+	go func(peers []*protocol.Connection, outGoingReply Reply, outGoingRequest []Request) error {
+		i := uint64(0)
+		l := uint64(len(outGoingRequest))
+		for i < l {
+			protocol.Invoke(*peers[outGoingRequest[i].Receiver_ServerId], "Server.RpcHandler", &outGoingRequest[i], &Reply{})
+			i++
+		}
+		return nil
+	}(s.Peers, outGoingReply, outGoingRequest)
 
 	return nil
 }
@@ -381,6 +388,7 @@ func (s *Server) RpcHandler(request *Request, reply *Reply) error {
 func (s *Server) PrintData(request *Request, reply *Reply) error {
 	s.mu.Lock()
 	fmt.Println(s.OperationsPerformed)
+	// fmt.Println("MyOperations", s.MyOperations)
 	// fmt.Println("Vector Clock", s.VectorClock)
 	// fmt.Println("Operations Performed", s.OperationsPerformed)
 	// fmt.Println("Pending Operations", s.PendingOperations)
@@ -396,9 +404,9 @@ func (s *Server) Start() error {
 
 	rpc.Register(s)
 
-	go func() {
+	go func() error {
 		for {
-			ms := 10
+			ms := 30
 			time.Sleep(time.Duration(ms) * time.Millisecond)
 
 			s.mu.Lock()
@@ -413,9 +421,7 @@ func (s *Server) Start() error {
 			reply := Reply{}
 
 			s.mu.Unlock()
-
-			c, _ := rpc.Dial(s.Peers[id].Network, s.Peers[id].Address)
-			c.Call("Server.RpcHandler", &request, &reply)
+			protocol.Invoke(*s.Peers[id], "Server.RpcHandler", &request, &reply)
 		}
 	}()
 

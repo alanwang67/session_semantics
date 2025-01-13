@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/alanwang67/session_semantics/client"
+	"github.com/alanwang67/session_semantics/protocol"
 	"github.com/alanwang67/session_semantics/server"
 )
 
@@ -16,14 +17,14 @@ func main() {
 	var data map[string]interface{}
 	json.Unmarshal(config, &data)
 
-	servers := make([]*server.Connection, len(data["servers"].([]interface{})))
+	servers := make([]*protocol.Connection, len(data["servers"].([]interface{})))
 	for i, s := range data["servers"].([]interface{}) {
 		conn, _ := s.(map[string]interface{})
 
 		network, _ := conn["network"].(string)
 		address, _ := conn["address"].(string)
 
-		servers[i] = &server.Connection{
+		servers[i] = &protocol.Connection{
 			Network: network,
 			Address: address,
 		}
