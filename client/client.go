@@ -39,7 +39,7 @@ func (c *Client) WriteToServer(value uint64, serverId uint64, sessionSemantic ui
 
 		clientReply := server.Reply{}
 
-		protocol.Invoke(*c.Servers[serverId], "Server.RpcHandler", &clientRequest, &clientReply)
+		protocol.Invoke(*c.Servers[serverId], "RpcServer.RpcHandler", &clientRequest, &clientReply)
 
 		fmt.Println(clientReply)
 		if clientReply.Client_Succeeded {
@@ -47,7 +47,7 @@ func (c *Client) WriteToServer(value uint64, serverId uint64, sessionSemantic ui
 			c.WriteVector = clientReply.Client_WriteVector
 			return clientReply.Client_Data
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(30 * time.Millisecond)
 		i++
 	}
 
@@ -74,7 +74,7 @@ func (c *Client) Start() error {
 
 		h, _ := rpc.Dial(c.Servers[i].Network, c.Servers[i].Address)
 
-		h.Call("Server.PrintData", &clientRequest, &clientReply)
+		h.Call("RpcServer.PrintData", &clientRequest, &clientReply)
 
 		i++
 	}

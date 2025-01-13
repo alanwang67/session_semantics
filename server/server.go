@@ -44,7 +44,7 @@ type Reply struct {
 	Client_WriteVector   []uint64
 }
 
-type Server struct {
+type RpcServer struct {
 	Id    uint64
 	Self  *protocol.Connection
 	Peers []*protocol.Connection
@@ -55,11 +55,22 @@ type Server struct {
 	PendingOperations      []Operation
 	Data                   uint64
 	GossipAcknowledgements []uint64
-	mu                     *sync.Mutex
+	mu                     sync.Mutex
 }
 
-func New(id uint64, self *protocol.Connection, peers []*protocol.Connection) *Server {
-	server := &Server{
+type Server struct {
+	Id                     uint64
+	NumberOfServers        uint64
+	VectorClock            []uint64
+	OperationsPerformed    []Operation
+	MyOperations           []Operation
+	PendingOperations      []Operation
+	Data                   uint64
+	GossipAcknowledgements []uint64
+}
+
+func New(id uint64, self *protocol.Connection, peers []*protocol.Connection) *RpcServer {
+	server := &RpcServer{
 		Id:                     id,
 		Self:                   self,
 		Peers:                  peers,
@@ -69,7 +80,6 @@ func New(id uint64, self *protocol.Connection, peers []*protocol.Connection) *Se
 		PendingOperations:      make([]Operation, 0),
 		GossipAcknowledgements: make([]uint64, len(peers)),
 		Data:                   0,
-		mu:                     &sync.Mutex{},
 	}
 	return server
 }
@@ -337,7 +347,7 @@ func ProcessRequest(server Server, request Request) (Server, Reply, []Request) {
 		return server, Reply{}, outGoingRequests
 	} else if request.RequestType == 3 { // sending gossip request
 		outGoingRequests := make([]Request, 0)
-		for i := range server.Peers {
+		for i := range server.NumberOfServers {
 			if uint64(i) != uint64(server.Id) {
 				index := uint64(i)
 				outGoingRequests = append(outGoingRequests, Request{RequestType: 1, Receive_Gossip_ServerId: server.Id, Receiver_ServerId: index, Receive_Gossip_Operations: getGossipOperations(server, index)})
@@ -349,20 +359,25 @@ func ProcessRequest(server Server, request Request) (Server, Reply, []Request) {
 	panic("Not a valid request type")
 }
 
-func (s *Server) RpcHandler(request *Request, reply *Reply) error {
+func (s *RpcServer) RpcHandler(request *Request, reply *Reply) error {
 	s.mu.Lock()
-	// fmt.Println(s.GossipAcknowledgements)
-	ns, outGoingReply, outGoingRequest := ProcessRequest(*s, *request)
-	s.Id = ns.Id
-	s.Self = ns.Self
-	s.Peers = ns.Peers
+
+	ns, outGoingReply, outGoingRequest := ProcessRequest(
+		Server{Id: s.Id,
+			NumberOfServers:        uint64(len(s.Peers)),
+			VectorClock:            s.VectorClock,
+			OperationsPerformed:    s.OperationsPerformed,
+			MyOperations:           s.MyOperations,
+			PendingOperations:      s.PendingOperations,
+			Data:                   s.Data,
+			GossipAcknowledgements: s.GossipAcknowledgements}, *request)
+
 	s.VectorClock = ns.VectorClock
 	s.OperationsPerformed = ns.OperationsPerformed
 	s.MyOperations = ns.MyOperations
 	s.PendingOperations = ns.PendingOperations
 	s.Data = ns.Data
 	s.GossipAcknowledgements = ns.GossipAcknowledgements
-	s.mu = ns.mu
 
 	reply.Client_Succeeded = outGoingReply.Client_Succeeded
 	reply.Client_Data = outGoingReply.Client_Data
@@ -376,7 +391,7 @@ func (s *Server) RpcHandler(request *Request, reply *Reply) error {
 		i := uint64(0)
 		l := uint64(len(outGoingRequest))
 		for i < l {
-			protocol.Invoke(*peers[outGoingRequest[i].Receiver_ServerId], "Server.RpcHandler", &outGoingRequest[i], &Reply{})
+			protocol.Invoke(*peers[outGoingRequest[i].Receiver_ServerId], "RpcServer.RpcHandler", &outGoingRequest[i], &Reply{})
 			i++
 		}
 		return nil
@@ -387,7 +402,7 @@ func (s *Server) RpcHandler(request *Request, reply *Reply) error {
 
 // for testing purposes
 // How do lock's in structs work in go
-func (s *Server) PrintData(request *Request, reply *Reply) error {
+func (s *RpcServer) PrintData(request *Request, reply *Reply) error {
 	s.mu.Lock()
 	fmt.Println(s.OperationsPerformed)
 	// fmt.Println("MyOperations", s.MyOperations)
@@ -399,7 +414,7 @@ func (s *Server) PrintData(request *Request, reply *Reply) error {
 	return nil
 }
 
-func (s *Server) Start() error {
+func (s *RpcServer) Start() error {
 
 	l, _ := net.Listen(s.Self.Network, s.Self.Address)
 	defer l.Close()
@@ -408,7 +423,8 @@ func (s *Server) Start() error {
 
 	go func() error {
 		for {
-			ms := 30
+			ms := 50 // performs better with a higher ms for gossip, at first I was trying it with a lower time since it said can't server your request
+			// but it's likely because it was spending a lot of time processing it without being able to apply everything
 			time.Sleep(time.Duration(ms) * time.Millisecond)
 
 			s.mu.Lock()
@@ -423,7 +439,7 @@ func (s *Server) Start() error {
 			reply := Reply{}
 
 			s.mu.Unlock()
-			protocol.Invoke(*s.Peers[id], "Server.RpcHandler", &request, &reply)
+			protocol.Invoke(*s.Peers[id], "RpcServer.RpcHandler", &request, &reply)
 		}
 	}()
 
