@@ -22,8 +22,7 @@ type Request struct {
 	Client_OperationType uint64
 	Client_SessionType   uint64
 	Client_Data          uint64
-	Client_ReadVector    []uint64
-	Client_WriteVector   []uint64
+	Client_Vector        []uint64
 
 	Receive_Gossip_ServerId   uint64
 	Receive_Gossip_Operations []Operation
@@ -40,8 +39,7 @@ type Reply struct {
 	Client_Succeeded     bool
 	Client_OperationType uint64
 	Client_Data          uint64
-	Client_ReadVector    []uint64
-	Client_WriteVector   []uint64
+	Client_Vector        []uint64
 }
 
 type RpcServer struct {
@@ -58,6 +56,7 @@ type RpcServer struct {
 	mu                     sync.Mutex
 }
 
+// maybe add is backup to this field?
 type Server struct {
 	Id                     uint64
 	NumberOfServers        uint64
@@ -98,10 +97,8 @@ func compareVersionVector(v1 []uint64, v2 []uint64) bool {
 	return output
 }
 
-func lexiographicCompare(o1 Operation, o2 Operation) bool {
+func lexiographicCompare(v1 []uint64, v2 []uint64) bool {
 	var output = true
-	var v1 = o1.VersionVector
-	var v2 = o2.VersionVector
 	var i = uint64(0)
 	var l = uint64(len(v1))
 	for i < l {
@@ -136,26 +133,10 @@ func maxTS(t1 []uint64, t2 []uint64) []uint64 {
 }
 
 func dependencyCheck(TS []uint64, request Request) bool {
-	if request.Client_SessionType == 0 { // Monotonic Reads
-		return compareVersionVector(TS, request.Client_ReadVector)
-	}
-	if request.Client_SessionType == 1 { // Writes Follow Reads
-		return compareVersionVector(TS, request.Client_ReadVector)
-	}
-	if request.Client_SessionType == 2 { // Read Your Writes
-		return compareVersionVector(TS, request.Client_WriteVector)
-	}
-	if request.Client_SessionType == 3 { // Monotonics Writes
-		return compareVersionVector(TS, request.Client_WriteVector)
-	}
-	if request.Client_SessionType == 4 { // Causal
-		return (compareVersionVector(TS, request.Client_ReadVector) && compareVersionVector(TS, request.Client_WriteVector))
-	}
-
-	panic("Invalid Session Type")
+	return compareVersionVector(TS, request.Client_Vector)
 }
 
-func ProcessClientRequest(server Server, request Request) (Server, Reply) {
+func processClientRequest(server Server, request Request) (Server, Reply) {
 	reply := Reply{}
 
 	if !(dependencyCheck(server.VectorClock, request)) {
@@ -167,8 +148,7 @@ func ProcessClientRequest(server Server, request Request) (Server, Reply) {
 		reply.Client_Succeeded = true
 		reply.Client_OperationType = 0
 		reply.Client_Data = server.Data
-		reply.Client_ReadVector = maxTS(request.Client_ReadVector, server.VectorClock)
-		reply.Client_WriteVector = request.Client_WriteVector
+		reply.Client_Vector = maxTS(request.Client_Vector, server.VectorClock)
 
 		return server, reply
 	} else {
@@ -187,8 +167,7 @@ func ProcessClientRequest(server Server, request Request) (Server, Reply) {
 		reply.Client_Succeeded = true
 		reply.Client_OperationType = 1
 		reply.Client_Data = server.Data
-		reply.Client_ReadVector = request.Client_ReadVector
-		reply.Client_WriteVector = append([]uint64(nil), server.VectorClock...)
+		reply.Client_Vector = append([]uint64(nil), server.VectorClock...)
 		return server, reply
 	}
 }
@@ -241,7 +220,7 @@ func binarySearch(s []Operation, needle Operation) (uint64, bool) {
 	var j = uint64(len(s))
 	for i < j {
 		mid := i + (j-i)/2
-		if lexiographicCompare(needle, s[mid]) {
+		if lexiographicCompare(needle.VersionVector, s[mid].VersionVector) {
 			i = mid + 1
 		} else {
 			j = mid
@@ -298,6 +277,7 @@ func deleteAtIndex(l []Operation, index uint64) []Operation {
 func receiveGossip(server Server, request Request) (Server, Reply) {
 	reply := Reply{}
 
+	// I don't think this will happen
 	if len(request.Receive_Gossip_Operations) == 0 {
 		return server, reply
 	}
@@ -331,9 +311,9 @@ func getGossipOperations(server Server, serverId uint64) []Operation {
 	return server.MyOperations[server.GossipAcknowledgements[serverId]:]
 }
 
-func ProcessRequest(server Server, request Request) (Server, Reply, []Request) {
+func processRequest(server Server, request Request) (Server, Reply, []Request) {
 	if request.RequestType == 0 { // Regular client request
-		server, outGoingreply := ProcessClientRequest(server, request)
+		server, outGoingreply := processClientRequest(server, request)
 		outGoingRequests := make([]Request, 0)
 		return server, outGoingreply, outGoingRequests
 	} else if request.RequestType == 1 { // receiving a gossip request
@@ -362,7 +342,7 @@ func ProcessRequest(server Server, request Request) (Server, Reply, []Request) {
 func (s *RpcServer) RpcHandler(request *Request, reply *Reply) error {
 	s.mu.Lock()
 
-	ns, outGoingReply, outGoingRequest := ProcessRequest(
+	ns, outGoingReply, outGoingRequest := processRequest(
 		Server{Id: s.Id,
 			NumberOfServers:        uint64(len(s.Peers)),
 			VectorClock:            s.VectorClock,
@@ -382,8 +362,7 @@ func (s *RpcServer) RpcHandler(request *Request, reply *Reply) error {
 	reply.Client_Succeeded = outGoingReply.Client_Succeeded
 	reply.Client_Data = outGoingReply.Client_Data
 	reply.Client_OperationType = outGoingReply.Client_OperationType
-	reply.Client_ReadVector = outGoingReply.Client_ReadVector
-	reply.Client_WriteVector = outGoingReply.Client_WriteVector
+	reply.Client_Vector = outGoingReply.Client_Vector
 
 	s.mu.Unlock()
 
