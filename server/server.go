@@ -34,8 +34,6 @@ type Request struct {
 }
 
 type Reply struct {
-	ReplyType uint64
-
 	Client_Succeeded     bool
 	Client_OperationType uint64
 	Client_Data          uint64
@@ -215,7 +213,7 @@ func equalOperations(o1 Operation, o2 Operation) bool {
 	return (o1.OperationType == o2.OperationType) && equalSlices(o1.VersionVector, o2.VersionVector) && (o1.Data == o2.Data)
 }
 
-func binarySearch(s []Operation, needle Operation) (uint64, bool) {
+func binarySearch(s []Operation, needle Operation) uint64 {
 	var i = uint64(0)
 	var j = uint64(len(s))
 	for i < j {
@@ -227,13 +225,13 @@ func binarySearch(s []Operation, needle Operation) (uint64, bool) {
 		}
 	}
 	if i < uint64(len(s)) {
-		return i, equalOperations(s[i], needle)
+		return i
 	}
-	return i, false
+	return i
 }
 
 func sortedInsert(s []Operation, value Operation) []Operation {
-	index, _ := binarySearch(s, value)
+	index := binarySearch(s, value)
 	if uint64(len(s)) == index {
 		return append(s, value)
 	} else {
@@ -308,7 +306,7 @@ func acknowledgeGossip(server Server, request Request) Server {
 }
 
 func getGossipOperations(server Server, serverId uint64) []Operation {
-	return server.MyOperations[server.GossipAcknowledgements[serverId]:]
+	return append([]Operation(nil), server.MyOperations[server.GossipAcknowledgements[serverId]:]...) // how can we eliminate this, problem of aliasing?
 }
 
 func processRequest(server Server, request Request) (Server, Reply, []Request) {
