@@ -101,7 +101,7 @@ func compareVersionVector(v1 []uint64, v2 []uint64) bool {
 }
 
 func lexiographicCompare(v1 []uint64, v2 []uint64) bool {
-	var output = true // change to false
+	var output = false
 	var i = uint64(0)
 	var l = uint64(len(v1))
 	for i < l {
