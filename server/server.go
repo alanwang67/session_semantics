@@ -228,7 +228,7 @@ func mergeOperations(l1 []Operation, l2 []Operation) []Operation {
 	return output[:prev]
 }
 
-func deleteAtIndex(l []Operation, index uint64) []Operation {
+func deleteAtIndexOperation(l []Operation, index uint64) []Operation {
 	var ret = make([]Operation, 0)
 	ret = append(ret, l[:index]...)
 	return append(ret, l[index+1:]...)
@@ -255,7 +255,7 @@ func receiveGossip(server Server, request Message) Server {
 		if oneOffVersionVector(server.Id, latestVersionVector, server.PendingOperations[i].VersionVector) {
 			server.OperationsPerformed = mergeOperations(server.OperationsPerformed, []Operation{server.PendingOperations[i]})
 			server.VectorClock = maxTS(latestVersionVector, server.PendingOperations[i].VersionVector)
-			server.PendingOperations = deleteAtIndex(server.PendingOperations, i)
+			server.PendingOperations = deleteAtIndexOperation(server.PendingOperations, i)
 			latestVersionVector = append([]uint64(nil), server.VectorClock...)
 			continue
 		}
@@ -278,10 +278,16 @@ func checkIfDuplicateRequest(server Server, request Message) bool {
 	return server.SeenRequests[request.C2S_Client_Id] >= request.C2S_Client_RequestNumber
 }
 
+func deleteAtIndexMessage(l []Message, index uint64) []Message {
+	var ret = make([]Message, 0)
+	ret = append(ret, l[:index]...)
+	return append(ret, l[index+1:]...)
+}
+
 func processClientRequest(server Server, request Message) (Server, Message) {
 	reply := Message{}
 
-	fmt.Print(checkIfDuplicateRequest(server, request))
+	// fmt.Print(checkIfDuplicateRequest(server, request))
 	if !(compareVersionVector(server.VectorClock, request.C2S_Client_VersionVector)) || checkIfDuplicateRequest(server, request) {
 		reply.S2C_Client_Succeeded = false
 		return server, reply
@@ -323,7 +329,7 @@ func processClientRequest(server Server, request Message) (Server, Message) {
 		reply.S2C_Client_Number = request.C2S_Client_Id
 		reply.S2C_Client_RequestNumber = request.C2S_Client_RequestNumber
 
-		fmt.Println(reply)
+		// fmt.Println(reply)
 
 		return server, reply
 	}
@@ -340,16 +346,6 @@ func processRequest(server Server, request Message) (Server, []Message) {
 		} else {
 			outGoingRequests = append(outGoingRequests, reply)
 
-			var i = uint64(0)
-
-			for i < uint64(len(server.UnsatisfiedRequests)) {
-				server, reply = processClientRequest(server, server.UnsatisfiedRequests[i])
-				if reply.S2C_Client_Succeeded {
-					outGoingRequests = append(outGoingRequests, reply)
-				}
-				i++
-			}
-
 			return server, outGoingRequests
 		}
 	} else if request.MessageType == 1 { // receiving a gossip request
@@ -360,6 +356,20 @@ func processRequest(server Server, request Message) (Server, []Message) {
 				S2S_Acknowledge_Gossip_Sending_ServerId:   server.Id,
 				S2S_Acknowledge_Gossip_Receiving_ServerId: request.S2S_Gossip_Sending_ServerId,
 				S2S_Acknowledge_Gossip_VersionVector:      request.S2S_Gossip_Operations[len(request.S2S_Gossip_Operations)-1].VersionVector})
+
+		var i = uint64(0)
+		var reply = Message{}
+
+		for i < uint64(len(server.UnsatisfiedRequests)) {
+			server, reply = processClientRequest(server, server.UnsatisfiedRequests[i])
+			if reply.S2C_Client_Succeeded {
+				outGoingRequests = append(outGoingRequests, reply)
+				server.UnsatisfiedRequests = deleteAtIndexMessage(server.UnsatisfiedRequests, i)
+				continue
+			}
+			i++
+		}
+
 		return server, outGoingRequests
 	} else if request.MessageType == 2 { // acknowledging a gossip request
 		server = acknowledgeGossip(server, request)
@@ -384,6 +394,7 @@ func processRequest(server Server, request Message) (Server, []Message) {
 
 func (s *RpcServer) RpcHandler(request *Message, reply *Message) error {
 	s.mu.Lock()
+	// fmt.Print(s.VectorClock)
 	ns, outGoingRequest := processRequest(
 		Server{
 			Id:                     s.Id,

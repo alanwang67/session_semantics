@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"net/rpc"
 	"sync"
@@ -30,7 +31,7 @@ func New(id uint64, address string, self *protocol.Connection, servers []*protoc
 		Servers:       servers,
 		RequestNumber: 1,
 		Ack:           true,
-		VersionVector: make([]uint64, 0),
+		VersionVector: make([]uint64, len(servers)),
 	}
 }
 
@@ -49,7 +50,7 @@ func (c *Client) Start() error {
 
 	i := uint64(0)
 	c.mu.Lock()
-	for i < uint64(10000) {
+	for i < uint64(1000) {
 		for c.Ack == false {
 			c.mu.Unlock()
 			time.Sleep(5 * time.Millisecond)
@@ -58,7 +59,7 @@ func (c *Client) Start() error {
 		c.mu.Unlock()
 		// c.WriteToServer(rand.Uint64(), 0, 4)
 
-		c.WriteToServer(0, uint64(i%uint64((len(c.Servers)))), 4)
+		c.WriteToServer(0, uint64(rand.Uint64()%uint64((len(c.Servers)))), 0)
 		c.mu.Lock()
 		fmt.Println(i)
 		i++
