@@ -19,15 +19,21 @@
     "clients": [
       {
         "id": 0,
-        "servers": [10, 11, 12]
+        "servers": [10, 11, 12],
+        "network": "tcp",
+        "address": "0.0.0.0:10003"
       },
       {
         "id": 1,
-        "servers": [10, 11, 12]
+        "servers": [10, 11, 12],
+        "network": "tcp",
+        "address": "0.0.0.0:10004"
       },
       {
         "id": 2,
-        "servers": [10, 11, 12]
+        "servers": [10, 11, 12],
+        "network": "tcp",
+        "address": "0.0.0.0:10005"
       }
     ]
   }

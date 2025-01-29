@@ -16,68 +16,74 @@ type Operation struct {
 	Data          uint64
 }
 
-type Request struct {
-	RequestType uint64
+type Message struct {
+	MessageType uint64
 
-	Client_OperationType uint64
-	Client_SessionType   uint64
-	Client_Data          uint64
-	Client_Vector        []uint64
+	C2S_Client_Id            uint64
+	C2S_Client_RequestNumber uint64
+	C2S_Client_OperationType uint64
+	C2S_Client_Data          uint64
+	C2S_Client_VersionVector []uint64
 
-	Receive_Gossip_ServerId   uint64
-	Receive_Gossip_Operations []Operation
+	S2S_Gossip_Sending_ServerId   uint64
+	S2S_Gossip_Receiving_ServerId uint64
+	S2S_Gossip_Operations         []Operation
 
-	Acknowledge_Gossip_ServerId uint64
-	Acknowledge_Gossip_Index    uint64
+	S2S_Acknowledge_Gossip_Sending_ServerId   uint64
+	S2S_Acknowledge_Gossip_Receiving_ServerId uint64
+	S2S_Acknowledge_Gossip_VersionVector      []uint64
 
-	Receiver_ServerId uint64
-}
-
-type Reply struct {
-	Client_Succeeded     bool
-	Client_OperationType uint64
-	Client_Data          uint64
-	Client_Vector        []uint64
+	S2C_Client_OperationType uint64
+	S2C_Client_Succeeded     bool
+	S2C_Client_Data          uint64
+	S2C_Client_VersionVector []uint64
+	S2C_Client_RequestNumber uint64
+	S2C_Client_Number        uint64
 }
 
 type RpcServer struct {
-	Id    uint64
-	Self  *protocol.Connection
-	Peers []*protocol.Connection
+	Id      uint64
+	Self    *protocol.Connection
+	Peers   []*protocol.Connection
+	Clients []*protocol.Connection
 
+	UnsatisfiedRequests    []Message
 	VectorClock            []uint64
 	OperationsPerformed    []Operation
 	MyOperations           []Operation
 	PendingOperations      []Operation
-	Data                   uint64
 	GossipAcknowledgements []uint64
+	SeenRequests           []uint64
 	mu                     sync.Mutex
 }
 
-// maybe add is backup to this field?
 type Server struct {
 	Id                     uint64
 	NumberOfServers        uint64
+	UnsatisfiedRequests    []Message
 	VectorClock            []uint64
 	OperationsPerformed    []Operation
 	MyOperations           []Operation
 	PendingOperations      []Operation
-	Data                   uint64
 	GossipAcknowledgements []uint64
+	SeenRequests           []uint64
 }
 
-func New(id uint64, self *protocol.Connection, peers []*protocol.Connection) *RpcServer {
+func New(id uint64, self *protocol.Connection, peers []*protocol.Connection, clients []*protocol.Connection) *RpcServer {
 	server := &RpcServer{
 		Id:                     id,
 		Self:                   self,
 		Peers:                  peers,
+		Clients:                clients,
+		UnsatisfiedRequests:    make([]Message, 0),
 		VectorClock:            make([]uint64, len(peers)),
-		MyOperations:           make([]Operation, 0),
 		OperationsPerformed:    make([]Operation, 0),
+		MyOperations:           make([]Operation, 0),
 		PendingOperations:      make([]Operation, 0),
 		GossipAcknowledgements: make([]uint64, len(peers)),
-		Data:                   0,
+		SeenRequests:           make([]uint64, len(clients)),
 	}
+
 	return server
 }
 
@@ -128,46 +134,6 @@ func maxTS(t1 []uint64, t2 []uint64) []uint64 {
 		i += 1
 	}
 	return output
-}
-
-func dependencyCheck(TS []uint64, request Request) bool {
-	return compareVersionVector(TS, request.Client_Vector)
-}
-
-func processClientRequest(server Server, request Request) (Server, Reply) {
-	reply := Reply{}
-
-	if !(dependencyCheck(server.VectorClock, request)) {
-		reply.Client_Succeeded = false
-		return server, reply
-	}
-
-	if request.Client_OperationType == 0 {
-		reply.Client_Succeeded = true
-		reply.Client_OperationType = 0
-		reply.Client_Data = server.Data
-		reply.Client_Vector = maxTS(request.Client_Vector, server.VectorClock)
-
-		return server, reply
-	} else {
-		server.VectorClock[server.Id] += 1
-		server.Data = request.Client_Data
-
-		op := Operation{
-			OperationType: 1,
-			VersionVector: append([]uint64(nil), server.VectorClock...),
-			Data:          server.Data,
-		}
-
-		server.OperationsPerformed = append(server.OperationsPerformed, op) // would we need to do anything here since we are mutating the underlying slice?
-		server.MyOperations = append(server.MyOperations, op)               // we can reuse op because it should be immutable
-
-		reply.Client_Succeeded = true
-		reply.Client_OperationType = 1
-		reply.Client_Data = server.Data
-		reply.Client_Vector = append([]uint64(nil), server.VectorClock...)
-		return server, reply
-	}
 }
 
 func oneOffVersionVector(serverId uint64, v1 []uint64, v2 []uint64) bool {
@@ -235,10 +201,7 @@ func sortedInsert(s []Operation, value Operation) []Operation {
 	if uint64(len(s)) == index {
 		return append(s, value)
 	} else {
-		// we need to do it like this since it could be dangerous if we reuse the slice again
-		// we can verify the other one likely by using an invariant that we won't reuse
-		// this would be O(n)
-		right := append([]Operation{value}, s[index:]...) // https://stackoverflow.com/questions/37334119/how-to-delete-an-element-from-a-slice-in-golang
+		right := append([]Operation{value}, s[index:]...)
 		result := append(s[:index], right...)
 		return result
 	}
@@ -265,22 +228,25 @@ func mergeOperations(l1 []Operation, l2 []Operation) []Operation {
 	return output[:prev]
 }
 
-// https://stackoverflow.com/questions/16248241/concatenate-two-slices-in-go
 func deleteAtIndex(l []Operation, index uint64) []Operation {
 	var ret = make([]Operation, 0)
 	ret = append(ret, l[:index]...)
 	return append(ret, l[index+1:]...)
 }
 
-func receiveGossip(server Server, request Request) (Server, Reply) {
-	reply := Reply{}
+func getDataFromOperationLog(l []Operation) uint64 {
+	if len(l) > 0 {
+		return l[len(l)-1].Data
+	}
+	return 0
+}
 
-	// I don't think this will happen
-	if len(request.Receive_Gossip_Operations) == 0 {
-		return server, reply
+func receiveGossip(server Server, request Message) Server {
+	if len(request.S2S_Gossip_Operations) == 0 {
+		return server
 	}
 
-	server.PendingOperations = mergeOperations(server.PendingOperations, request.Receive_Gossip_Operations)
+	server.PendingOperations = mergeOperations(server.PendingOperations, request.S2S_Gossip_Operations)
 	latestVersionVector := append([]uint64(nil), server.VectorClock...)
 
 	i := uint64(0)
@@ -289,7 +255,6 @@ func receiveGossip(server Server, request Request) (Server, Reply) {
 		if oneOffVersionVector(server.Id, latestVersionVector, server.PendingOperations[i].VersionVector) {
 			server.OperationsPerformed = mergeOperations(server.OperationsPerformed, []Operation{server.PendingOperations[i]})
 			server.VectorClock = maxTS(latestVersionVector, server.PendingOperations[i].VersionVector)
-			server.Data = server.OperationsPerformed[len(server.OperationsPerformed)-1].Data
 			server.PendingOperations = deleteAtIndex(server.PendingOperations, i)
 			latestVersionVector = append([]uint64(nil), server.VectorClock...)
 			continue
@@ -297,89 +262,179 @@ func receiveGossip(server Server, request Request) (Server, Reply) {
 		i++
 	}
 
-	return server, reply
+	return server
 }
 
-func acknowledgeGossip(server Server, request Request) Server {
-	server.GossipAcknowledgements[request.Acknowledge_Gossip_ServerId] = request.Acknowledge_Gossip_Index
+func acknowledgeGossip(server Server, request Message) Server {
+	server.GossipAcknowledgements[request.S2S_Acknowledge_Gossip_Sending_ServerId] = request.S2S_Acknowledge_Gossip_VersionVector[server.Id]
 	return server
 }
 
 func getGossipOperations(server Server, serverId uint64) []Operation {
-	return append([]Operation(nil), server.MyOperations[server.GossipAcknowledgements[serverId]:]...) // how can we eliminate this, problem of aliasing?
+	return append([]Operation(nil), server.MyOperations[server.GossipAcknowledgements[serverId]:]...)
 }
 
-func processRequest(server Server, request Request) (Server, Reply, []Request) {
-	if request.RequestType == 0 { // Regular client request
-		server, outGoingreply := processClientRequest(server, request)
-		outGoingRequests := make([]Request, 0)
-		return server, outGoingreply, outGoingRequests
-	} else if request.RequestType == 1 { // receiving a gossip request
-		server, outGoingreply := receiveGossip(server, request)
-		outGoingRequests := make([]Request, 0)
-		outGoingRequests = append(outGoingRequests, Request{RequestType: 2, Acknowledge_Gossip_ServerId: server.Id, Receiver_ServerId: request.Receive_Gossip_ServerId, Acknowledge_Gossip_Index: uint64(len(request.Receive_Gossip_Operations))})
-		return server, outGoingreply, outGoingRequests
-	} else if request.RequestType == 2 { // acknowledging a gossip request
+func checkIfDuplicateRequest(server Server, request Message) bool {
+	return server.SeenRequests[request.C2S_Client_Id] >= request.C2S_Client_RequestNumber
+}
+
+func processClientRequest(server Server, request Message) (Server, Message) {
+	reply := Message{}
+
+	fmt.Print(checkIfDuplicateRequest(server, request))
+	if !(compareVersionVector(server.VectorClock, request.C2S_Client_VersionVector)) || checkIfDuplicateRequest(server, request) {
+		reply.S2C_Client_Succeeded = false
+		return server, reply
+	}
+
+	if request.C2S_Client_OperationType == 0 {
+		server.SeenRequests[request.C2S_Client_Id] = request.C2S_Client_RequestNumber
+
+		reply.MessageType = 4
+		reply.S2C_Client_OperationType = 0
+		reply.S2C_Client_Succeeded = true
+		reply.S2C_Client_Data = getDataFromOperationLog(server.OperationsPerformed)
+		reply.S2C_Client_VersionVector = maxTS(request.C2S_Client_VersionVector, server.VectorClock)
+		reply.S2C_Client_Number = request.C2S_Client_Id
+		reply.S2C_Client_RequestNumber = request.C2S_Client_RequestNumber
+
+		return server, reply
+	} else {
+		server.VectorClock[server.Id] += 1
+		server.SeenRequests[request.C2S_Client_Id] = request.C2S_Client_RequestNumber
+
+		server.OperationsPerformed = append(server.OperationsPerformed, Operation{
+			OperationType: 1,
+			VersionVector: append([]uint64(nil), server.VectorClock...),
+			Data:          request.C2S_Client_Data,
+		})
+
+		server.MyOperations = append(server.MyOperations, Operation{
+			OperationType: 1,
+			VersionVector: append([]uint64(nil), server.VectorClock...),
+			Data:          request.C2S_Client_Data,
+		})
+
+		reply.MessageType = 4
+		reply.S2C_Client_OperationType = 1
+		reply.S2C_Client_Succeeded = true
+		reply.S2C_Client_Data = getDataFromOperationLog(server.OperationsPerformed)
+		reply.S2C_Client_VersionVector = append([]uint64(nil), server.VectorClock...)
+		reply.S2C_Client_Number = request.C2S_Client_Id
+		reply.S2C_Client_RequestNumber = request.C2S_Client_RequestNumber
+
+		fmt.Println(reply)
+
+		return server, reply
+	}
+}
+
+func processRequest(server Server, request Message) (Server, []Message) {
+	outGoingRequests := make([]Message, 0)
+	if request.MessageType == 0 { // Regular client request
+		server, reply := processClientRequest(server, request)
+		if !reply.S2C_Client_Succeeded {
+			server.UnsatisfiedRequests = append(server.UnsatisfiedRequests, request)
+
+			return server, outGoingRequests
+		} else {
+			outGoingRequests = append(outGoingRequests, reply)
+
+			var i = uint64(0)
+
+			for i < uint64(len(server.UnsatisfiedRequests)) {
+				server, reply = processClientRequest(server, server.UnsatisfiedRequests[i])
+				if reply.S2C_Client_Succeeded {
+					outGoingRequests = append(outGoingRequests, reply)
+				}
+				i++
+			}
+
+			return server, outGoingRequests
+		}
+	} else if request.MessageType == 1 { // receiving a gossip request
+		// fmt.Print(request.S2S_Gossip_Operations)
+		server := receiveGossip(server, request)
+		outGoingRequests = append(outGoingRequests,
+			Message{MessageType: 2,
+				S2S_Acknowledge_Gossip_Sending_ServerId:   server.Id,
+				S2S_Acknowledge_Gossip_Receiving_ServerId: request.S2S_Gossip_Sending_ServerId,
+				S2S_Acknowledge_Gossip_VersionVector:      request.S2S_Gossip_Operations[len(request.S2S_Gossip_Operations)-1].VersionVector})
+		return server, outGoingRequests
+	} else if request.MessageType == 2 { // acknowledging a gossip request
 		server = acknowledgeGossip(server, request)
-		outGoingRequests := make([]Request, 0)
-		return server, Reply{}, outGoingRequests
-	} else if request.RequestType == 3 { // sending gossip request
-		outGoingRequests := make([]Request, 0)
+		return server, outGoingRequests
+	} else if request.MessageType == 3 { // sending gossip request
 		for i := range server.NumberOfServers {
 			if uint64(i) != uint64(server.Id) {
 				index := uint64(i)
-				outGoingRequests = append(outGoingRequests, Request{RequestType: 1, Receive_Gossip_ServerId: server.Id, Receiver_ServerId: index, Receive_Gossip_Operations: getGossipOperations(server, index)})
+				outGoingRequests = append(outGoingRequests,
+					Message{MessageType: 1,
+						S2S_Gossip_Sending_ServerId:   server.Id,
+						S2S_Gossip_Receiving_ServerId: index,
+						S2S_Gossip_Operations:         getGossipOperations(server, index),
+					})
 			}
 		}
-		return server, Reply{}, outGoingRequests
+		return server, outGoingRequests
 	}
 
-	panic("Not a valid request type")
+	panic("Unknown MessageType")
 }
 
-func (s *RpcServer) RpcHandler(request *Request, reply *Reply) error {
+func (s *RpcServer) RpcHandler(request *Message, reply *Message) error {
 	s.mu.Lock()
-
-	ns, outGoingReply, outGoingRequest := processRequest(
-		Server{Id: s.Id,
+	ns, outGoingRequest := processRequest(
+		Server{
+			Id:                     s.Id,
 			NumberOfServers:        uint64(len(s.Peers)),
+			UnsatisfiedRequests:    s.UnsatisfiedRequests,
 			VectorClock:            s.VectorClock,
 			OperationsPerformed:    s.OperationsPerformed,
 			MyOperations:           s.MyOperations,
 			PendingOperations:      s.PendingOperations,
-			Data:                   s.Data,
-			GossipAcknowledgements: s.GossipAcknowledgements}, *request)
+			GossipAcknowledgements: s.GossipAcknowledgements,
+			SeenRequests:           s.SeenRequests,
+		}, *request)
 
+	s.UnsatisfiedRequests = ns.UnsatisfiedRequests
 	s.VectorClock = ns.VectorClock
 	s.OperationsPerformed = ns.OperationsPerformed
 	s.MyOperations = ns.MyOperations
 	s.PendingOperations = ns.PendingOperations
-	s.Data = ns.Data
 	s.GossipAcknowledgements = ns.GossipAcknowledgements
-
-	reply.Client_Succeeded = outGoingReply.Client_Succeeded
-	reply.Client_Data = outGoingReply.Client_Data
-	reply.Client_OperationType = outGoingReply.Client_OperationType
-	reply.Client_Vector = outGoingReply.Client_Vector
+	s.SeenRequests = ns.SeenRequests
 
 	s.mu.Unlock()
 
-	go func(peers []*protocol.Connection, outGoingReply Reply, outGoingRequest []Request) error {
+	// send RPC request to client here
+	// change request such that it has an address
+	go func(peers []*protocol.Connection, clients []*protocol.Connection, outGoingRequest []Message) error {
 		i := uint64(0)
 		l := uint64(len(outGoingRequest))
 		for i < l {
-			protocol.Invoke(*peers[outGoingRequest[i].Receiver_ServerId], "RpcServer.RpcHandler", &outGoingRequest[i], &Reply{})
+			index := i
+			if outGoingRequest[index].MessageType == 1 {
+				go func() {
+					protocol.Invoke(*peers[outGoingRequest[index].S2S_Gossip_Receiving_ServerId], "RpcServer.RpcHandler", &outGoingRequest[index], &Message{})
+				}()
+			} else if outGoingRequest[index].MessageType == 4 {
+				go func() {
+					// fmt.Print("We are here")
+					// fmt.Print(*clients[outGoingRequest[index].S2C_Client_Number])
+					protocol.Invoke(*clients[outGoingRequest[index].S2C_Client_Number], "Client.AcknowledgeRequest", &outGoingRequest[index], &Message{})
+				}()
+			}
 			i++
 		}
 		return nil
-	}(s.Peers, outGoingReply, outGoingRequest)
+	}(s.Peers, s.Clients, outGoingRequest)
 
 	return nil
 }
 
 // for testing purposes
-// How do lock's in structs work in go
-func (s *RpcServer) PrintData(request *Request, reply *Reply) error {
+func (s *RpcServer) PrintData(request *Message, reply *Message) error {
 	s.mu.Lock()
 	fmt.Println(s.OperationsPerformed)
 	// fmt.Println("MyOperations", s.MyOperations)
@@ -400,8 +455,8 @@ func (s *RpcServer) Start() error {
 
 	go func() error {
 		for {
-			ms := 50 // performs better with a higher ms for gossip, at first I was trying it with a lower time since it said can't server your request
-			// but it's likely because it was spending a lot of time processing it without being able to apply everything
+			ms := 50
+
 			time.Sleep(time.Duration(ms) * time.Millisecond)
 
 			s.mu.Lock()
@@ -412,10 +467,11 @@ func (s *RpcServer) Start() error {
 			}
 
 			id := s.Id
-			request := Request{RequestType: 3}
-			reply := Reply{}
+			request := Message{MessageType: 3}
+			reply := Message{}
 
 			s.mu.Unlock()
+
 			protocol.Invoke(*s.Peers[id], "RpcServer.RpcHandler", &request, &reply)
 		}
 	}()

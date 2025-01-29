@@ -30,6 +30,19 @@ func main() {
 		}
 	}
 
+	clients := make([]*protocol.Connection, len(data["clients"].([]interface{})))
+	for i, s := range data["clients"].([]interface{}) {
+		conn, _ := s.(map[string]interface{})
+
+		network, _ := conn["network"].(string)
+		address, _ := conn["address"].(string)
+
+		clients[i] = &protocol.Connection{
+			Network: network,
+			Address: address,
+		}
+	}
+
 	if len(os.Args) < 3 {
 		log.Fatalf("usage: %s [client|server] [id]", os.Args[0])
 	}
@@ -41,9 +54,9 @@ func main() {
 
 	switch os.Args[1] {
 	case "client":
-		client.New(id, servers).Start()
+		client.New(id, clients[id].Address, clients[id], servers).Start()
 	case "server":
-		server.New(id, servers[id], servers).Start()
+		server.New(id, servers[id], servers, clients).Start()
 	default:
 		log.Fatalf("unknown command: %s", os.Args[1])
 	}
