@@ -230,6 +230,7 @@ func deleteAtIndexOperation(l []Operation, index uint64) []Operation {
 	ret = append(ret, l[:index]...)
 	return append(ret, l[index+1:]...)
 }
+
 func deleteAtIndexMessage(l []Message, index uint64) []Message {
 	var ret = make([]Message, 0)
 	ret = append(ret, l[:index]...)

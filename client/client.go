@@ -12,30 +12,41 @@ import (
 	"github.com/alanwang67/session_semantics/server"
 )
 
-type Client struct {
-	Id            uint64
-	Address       string
-	Self          *protocol.Connection
-	Servers       []*protocol.Connection
-	VersionVector []uint64
-	RequestNumber uint64
-	Ack           bool
-	mu            sync.Mutex
+type RpcClient struct {
+	Id              uint64
+	Address         string
+	Self            *protocol.Connection
+	Servers         []*protocol.Connection
+	VersionVector   []uint64
+	RequestNumber   uint64
+	SessionSemantic uint64
+	Ack             bool
+	mu              sync.Mutex
 }
 
-func New(id uint64, address string, self *protocol.Connection, servers []*protocol.Connection) *Client {
-	return &Client{
-		Id:            id,
-		Address:       address,
-		Self:          self,
-		Servers:       servers,
-		RequestNumber: 1,
-		Ack:           true,
-		VersionVector: make([]uint64, len(servers)),
+type Client struct {
+	Id              uint64
+	NumberOfServers uint64
+	VersionVector   []uint64
+	SessionSemantic uint64
+	RequestNumber   uint64
+	Ack             bool
+}
+
+func New(id uint64, address string, sessionSemantic uint64, self *protocol.Connection, servers []*protocol.Connection) *RpcClient {
+	return &RpcClient{
+		Id:              id,
+		Address:         address,
+		Self:            self,
+		Servers:         servers,
+		RequestNumber:   1,
+		SessionSemantic: sessionSemantic,
+		Ack:             true,
+		VersionVector:   make([]uint64, len(servers)),
 	}
 }
 
-func (c *Client) Start() error {
+func (c *RpcClient) Start() error {
 
 	l, _ := net.Listen(c.Self.Network, c.Self.Address)
 	defer l.Close()
@@ -51,7 +62,7 @@ func (c *Client) Start() error {
 	i := uint64(0)
 	c.mu.Lock()
 	for i < uint64(1000) {
-		for c.Ack == false {
+		for !c.Ack {
 			c.mu.Unlock()
 			time.Sleep(5 * time.Millisecond)
 			c.mu.Lock()
@@ -59,14 +70,12 @@ func (c *Client) Start() error {
 		c.mu.Unlock()
 		// c.WriteToServer(rand.Uint64(), 0, 4)
 
-		c.WriteToServer(0, uint64(rand.Uint64()%uint64((len(c.Servers)))), 0)
+		c.communicateWithServer(0, uint64(rand.Uint64()%uint64((len(c.Servers)))), 0)
 		c.mu.Lock()
 		fmt.Println(i)
 		i++
 	}
 	c.mu.Unlock()
-
-	// c.WriteToServer(rand.Uint64(), 0, 4)
 
 	time.Sleep(1000 * time.Millisecond)
 
@@ -89,51 +98,100 @@ func (c *Client) Start() error {
 	}
 }
 
-func (c *Client) AcknowledgeRequest(request *server.Message, reply *server.Message) error {
+func (c *RpcClient) AcknowledgeRequest(request *server.Message, reply *server.Message) error {
 	c.mu.Lock()
 
-	fmt.Print("Acknowledged")
-
-	if request.S2C_Client_Succeeded {
-		c.VersionVector = request.S2C_Client_VersionVector
-		c.RequestNumber = max(c.RequestNumber, request.S2C_Client_RequestNumber+1)
+	if request.S2C_Client_OperationType == 0 {
+		if c.SessionSemantic == 2 || c.SessionSemantic == 3 || c.SessionSemantic == 4 {
+			c.VersionVector = request.S2C_Client_VersionVector
+		}
 	}
 
+	if request.S2C_Client_OperationType == 1 {
+		if c.SessionSemantic == 0 || c.SessionSemantic == 1 || c.SessionSemantic == 4 {
+			c.VersionVector = request.S2C_Client_VersionVector
+		}
+	}
+
+	// I'm not sure if we need to do the max?, depends on if there are acknowledgements that are skipped over
+	c.RequestNumber = max(c.RequestNumber, request.S2C_Client_RequestNumber+1)
 	c.Ack = true
+
 	c.mu.Unlock()
 
 	return nil
 }
 
-// func write(client Client, value uint64, serverId uint64, sessionSemantic uint64) server.Message {
+func write(client Client, value uint64) server.Message {
+	if client.SessionSemantic == 0 || client.SessionSemantic == 1 || client.SessionSemantic == 4 { // WFR MW Causal
+		return server.Message{
+			MessageType:              0,
+			C2S_Client_Id:            client.Id,
+			C2S_Client_RequestNumber: client.RequestNumber,
+			C2S_Client_OperationType: 1,
+			C2S_Client_Data:          value,
+			C2S_Client_VersionVector: client.VersionVector,
+		}
+	} else {
+		return server.Message{
+			MessageType:              0,
+			C2S_Client_Id:            client.Id,
+			C2S_Client_RequestNumber: client.RequestNumber,
+			C2S_Client_OperationType: 1,
+			C2S_Client_Data:          10,
+			C2S_Client_VersionVector: make([]uint64, client.NumberOfServers),
+		}
+	}
+}
 
-// }
+func read(client Client) server.Message {
+	if client.SessionSemantic == 2 || client.SessionSemantic == 3 || client.SessionSemantic == 4 { // MR RYW Causal
+		return server.Message{
+			MessageType:              0,
+			C2S_Client_Id:            client.Id,
+			C2S_Client_RequestNumber: client.RequestNumber,
+			C2S_Client_OperationType: 0,
+			C2S_Client_VersionVector: client.VersionVector,
+		}
+	} else {
+		return server.Message{
+			MessageType:              0,
+			C2S_Client_Id:            client.Id,
+			C2S_Client_RequestNumber: client.RequestNumber,
+			C2S_Client_OperationType: 0,
+			C2S_Client_VersionVector: make([]uint64, client.NumberOfServers),
+		}
+	}
+}
 
-func (c *Client) WriteToServer(value uint64, serverId uint64, sessionSemantic uint64) error {
+func (c *RpcClient) communicateWithServer(operationType uint64, serverId uint64, value uint64) {
 	c.mu.Lock()
 	c.Ack = false
 
-	if sessionSemantic == 0 || sessionSemantic == 1 { // WFR MW
-		clientRequest := server.Message{
-			MessageType:              0,
-			C2S_Client_Id:            c.Id,
-			C2S_Client_RequestNumber: c.RequestNumber,
-			C2S_Client_OperationType: 1,
-			C2S_Client_Data:          10,
-			C2S_Client_VersionVector: c.VersionVector,
+	if operationType == 0 {
+		client := Client{
+			Id:              c.Id,
+			NumberOfServers: uint64(len(c.Servers)),
+			VersionVector:   c.VersionVector,
+			SessionSemantic: c.SessionSemantic,
+			RequestNumber:   c.RequestNumber,
+			Ack:             c.Ack,
 		}
-		protocol.Invoke(*c.Servers[serverId], "RpcServer.RpcHandler", &clientRequest, &server.Message{})
+		message := read(client)
+		protocol.Invoke(*c.Servers[serverId], "RpcServer.RpcHandler", &message, &server.Message{})
 	} else {
-		clientRequest := server.Message{
-			C2S_Client_Id:            c.Id,
-			C2S_Client_RequestNumber: c.RequestNumber,
-			C2S_Client_OperationType: 1,
-			C2S_Client_Data:          10,
-			C2S_Client_VersionVector: make([]uint64, len(c.Servers)),
+		client := Client{
+			Id:              c.Id,
+			NumberOfServers: uint64(len(c.Servers)),
+			VersionVector:   c.VersionVector,
+			SessionSemantic: c.SessionSemantic,
+			RequestNumber:   c.RequestNumber,
+			Ack:             c.Ack,
 		}
-		protocol.Invoke(*c.Servers[serverId], "RpcServer.RpcHandler", &clientRequest, &server.Message{})
+		message := write(client, value)
+		protocol.Invoke(*c.Servers[serverId], "RpcServer.RpcHandler", &message, &server.Message{})
 	}
+
 	c.mu.Unlock()
 
-	return nil
 }
