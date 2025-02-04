@@ -230,6 +230,11 @@ func deleteAtIndexOperation(l []Operation, index uint64) []Operation {
 	ret = append(ret, l[:index]...)
 	return append(ret, l[index+1:]...)
 }
+func deleteAtIndexMessage(l []Message, index uint64) []Message {
+	var ret = make([]Message, 0)
+	ret = append(ret, l[:index]...)
+	return append(ret, l[index+1:]...)
+}
 
 func getDataFromOperationLog(l []Operation) uint64 {
 	if len(l) > 0 {
@@ -244,16 +249,16 @@ func receiveGossip(server Server, request Message) Server {
 	}
 
 	server.PendingOperations = mergeOperations(server.PendingOperations, request.S2S_Gossip_Operations)
-	latestVersionVector := append([]uint64(nil), server.VectorClock...)
+	// latestVersionVector := append([]uint64(nil), server.VectorClock...)
 
 	i := uint64(0)
 
 	for i < uint64(len(server.PendingOperations)) {
-		if oneOffVersionVector(latestVersionVector, server.PendingOperations[i].VersionVector) {
+		if oneOffVersionVector(server.VectorClock, server.PendingOperations[i].VersionVector) {
 			server.OperationsPerformed = mergeOperations(server.OperationsPerformed, []Operation{server.PendingOperations[i]})
-			server.VectorClock = maxTS(latestVersionVector, server.PendingOperations[i].VersionVector)
+			server.VectorClock = maxTS(server.VectorClock, server.PendingOperations[i].VersionVector)
 			server.PendingOperations = deleteAtIndexOperation(server.PendingOperations, i)
-			latestVersionVector = append([]uint64(nil), server.VectorClock...)
+			// latestVersionVector = append([]uint64(nil), server.VectorClock...)
 			continue
 		}
 		i++
@@ -273,12 +278,6 @@ func getGossipOperations(server Server, serverId uint64) []Operation {
 
 func checkIfDuplicateRequest(server Server, request Message) bool {
 	return server.SeenRequests[request.C2S_Client_Id] >= request.C2S_Client_RequestNumber
-}
-
-func deleteAtIndexMessage(l []Message, index uint64) []Message {
-	var ret = make([]Message, 0)
-	ret = append(ret, l[:index]...)
-	return append(ret, l[index+1:]...)
 }
 
 func processClientRequest(server Server, request Message) (bool, Server, Message) {
