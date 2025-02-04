@@ -39,7 +39,7 @@ func New(id uint64, address string, sessionSemantic uint64, self *protocol.Conne
 		Address:         address,
 		Self:            self,
 		Servers:         servers,
-		RequestNumber:   1,
+		RequestNumber:   1, //needs to be 1
 		SessionSemantic: sessionSemantic,
 		Ack:             true,
 		VersionVector:   make([]uint64, len(servers)),
@@ -61,7 +61,7 @@ func (c *RpcClient) Start() error {
 
 	i := uint64(0)
 	c.mu.Lock()
-	for i < uint64(1000) {
+	for i < uint64(100) {
 		for !c.Ack {
 			c.mu.Unlock()
 			time.Sleep(5 * time.Millisecond)
@@ -70,9 +70,10 @@ func (c *RpcClient) Start() error {
 		c.mu.Unlock()
 		// c.WriteToServer(rand.Uint64(), 0, 4)
 
-		c.communicateWithServer(0, uint64(rand.Uint64()%uint64((len(c.Servers)))), 0)
+		c.communicateWithServer(1, uint64(rand.Uint64()%uint64((len(c.Servers)))), rand.Uint64())
 		c.mu.Lock()
 		fmt.Println(i)
+		fmt.Println(c.VersionVector)
 		i++
 	}
 	c.mu.Unlock()
@@ -90,6 +91,8 @@ func (c *RpcClient) Start() error {
 
 		h.Call("RpcServer.PrintData", &clientRequest, &clientReply)
 
+		c.communicateWithServer(0, i, rand.Uint64())
+
 		i++
 	}
 
@@ -99,6 +102,7 @@ func (c *RpcClient) Start() error {
 }
 
 func (c *RpcClient) AcknowledgeRequest(request *server.Message, reply *server.Message) error {
+	// fmt.Print("We got it")
 	c.mu.Lock()
 
 	if request.S2C_Client_OperationType == 0 {
@@ -189,6 +193,7 @@ func (c *RpcClient) communicateWithServer(operationType uint64, serverId uint64,
 			Ack:             c.Ack,
 		}
 		message := write(client, value)
+		fmt.Print(message)
 		protocol.Invoke(*c.Servers[serverId], "RpcServer.RpcHandler", &message, &server.Message{})
 	}
 

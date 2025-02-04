@@ -284,8 +284,10 @@ func checkIfDuplicateRequest(server Server, request Message) bool {
 func processClientRequest(server Server, request Message) (bool, Server, Message) {
 	reply := Message{}
 
+	// fmt.Print(request.C2S_Client_VersionVector)
+	// fmt.Print(compareVersionVector(server.VectorClock, request.C2S_Client_VersionVector))
 	// fmt.Print(checkIfDuplicateRequest(server, request))
-	if !(compareVersionVector(server.VectorClock, request.C2S_Client_VersionVector)) || checkIfDuplicateRequest(server, request) {
+	if !equalSlices(make([]uint64, server.NumberOfServers), request.C2S_Client_VersionVector) && (!(compareVersionVector(server.VectorClock, request.C2S_Client_VersionVector)) || checkIfDuplicateRequest(server, request)) {
 		return false, server, reply
 	}
 
@@ -328,24 +330,25 @@ func processClientRequest(server Server, request Message) (bool, Server, Message
 }
 
 func processRequest(server Server, request Message) (Server, []Message) {
-	outGoingRequests := make([]Message, 0)
+	var outGoingRequests = make([]Message, 0)
+	var s = server
 	if request.MessageType == 0 { // Regular client request
-		succeeded, server, reply := processClientRequest(server, request)
+		var succeeded = false
+		var reply = Message{}
+		succeeded, s, reply = processClientRequest(s, request)
+		// fmt.Print(s.MyOperations)
 		if succeeded {
 			outGoingRequests = append(outGoingRequests, reply)
-
-			return server, outGoingRequests
 		} else {
-			server.UnsatisfiedRequests = append(server.UnsatisfiedRequests, request)
-
-			return server, outGoingRequests
+			s.UnsatisfiedRequests = append(s.UnsatisfiedRequests, request)
 		}
+		// fmt.Print(s, outGoingRequests)
 	} else if request.MessageType == 1 { // receiving a gossip request
 		// fmt.Print(request.S2S_Gossip_Operations)
-		server := receiveGossip(server, request)
+		s = receiveGossip(s, request)
 		outGoingRequests = append(outGoingRequests,
 			Message{MessageType: 2,
-				S2S_Acknowledge_Gossip_Sending_ServerId:   server.Id,
+				S2S_Acknowledge_Gossip_Sending_ServerId:   s.Id,
 				S2S_Acknowledge_Gossip_Receiving_ServerId: request.S2S_Gossip_Sending_ServerId,
 				S2S_Acknowledge_Gossip_Index:              request.S2S_Gossip_Index})
 
@@ -353,42 +356,43 @@ func processRequest(server Server, request Message) (Server, []Message) {
 		var reply = Message{}
 		var succeeded = false
 
-		for i < uint64(len(server.UnsatisfiedRequests)) {
-			succeeded, server, reply = processClientRequest(server, server.UnsatisfiedRequests[i])
+		for i < uint64(len(s.UnsatisfiedRequests)) {
+			succeeded, s, reply = processClientRequest(s, s.UnsatisfiedRequests[i])
 			if succeeded {
 				outGoingRequests = append(outGoingRequests, reply)
-				server.UnsatisfiedRequests = deleteAtIndexMessage(server.UnsatisfiedRequests, i)
+				s.UnsatisfiedRequests = deleteAtIndexMessage(s.UnsatisfiedRequests, i)
 				continue
 			}
 			i++
 		}
 
-		return server, outGoingRequests
 	} else if request.MessageType == 2 { // acknowledging a gossip request
-		server = acknowledgeGossip(server, request)
-		return server, outGoingRequests
+		s = acknowledgeGossip(s, request)
 	} else if request.MessageType == 3 { // sending gossip request
-		for i := range server.NumberOfServers {
-			if uint64(i) != uint64(server.Id) {
+		// fmt.Print("We are gossiping")
+
+		var i = uint64(0)
+		for i < server.NumberOfServers {
+			if uint64(i) != uint64(s.Id) {
 				index := uint64(i)
 				outGoingRequests = append(outGoingRequests,
 					Message{MessageType: 1,
-						S2S_Gossip_Sending_ServerId:   server.Id,
+						S2S_Gossip_Sending_ServerId:   s.Id,
 						S2S_Gossip_Receiving_ServerId: index,
-						S2S_Gossip_Operations:         getGossipOperations(server, index),
-						S2S_Gossip_Index:              uint64(len(server.MyOperations)),
+						S2S_Gossip_Operations:         getGossipOperations(s, index),
+						S2S_Gossip_Index:              uint64(len(s.MyOperations)),
 					})
 			}
+			i = i + 1
 		}
-		return server, outGoingRequests
 	}
 
-	panic("Unknown MessageType")
+	// fmt.Print(s.MyOperations)
+	return s, outGoingRequests
 }
 
 func (s *RpcServer) RpcHandler(request *Message, reply *Message) error {
 	s.mu.Lock()
-	fmt.Print(s.VectorClock)
 	ns, outGoingRequest := processRequest(
 		Server{
 			Id:                     s.Id,
@@ -427,7 +431,7 @@ func (s *RpcServer) RpcHandler(request *Message, reply *Message) error {
 				go func() {
 					// fmt.Print("We are here")
 					// fmt.Print(*clients[outGoingRequest[index].S2C_Client_Number])
-					protocol.Invoke(*clients[outGoingRequest[index].S2C_Client_Number], "Client.AcknowledgeRequest", &outGoingRequest[index], &Message{})
+					protocol.Invoke(*clients[outGoingRequest[index].S2C_Client_Number], "RpcClient.AcknowledgeRequest", &outGoingRequest[index], &Message{})
 				}()
 			}
 			i++
