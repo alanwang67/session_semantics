@@ -214,12 +214,14 @@ func mergeOperations(l1 []Operation, l2 []Operation) []Operation {
 		i++
 	}
 
-	prev := 1
-	for curr := 1; curr < len(output); curr++ {
+	var prev = uint64(1)
+	var curr = uint64(1)
+	for curr < uint64(len(output)) {
 		if !equalOperations(output[curr-1], output[curr]) {
 			output[prev] = output[curr]
-			prev++
+			prev = prev + 1
 		}
+		curr = curr + 1
 	}
 
 	return output[:prev]
@@ -252,7 +254,7 @@ func receiveGossip(server Server, request Message) Server {
 	server.PendingOperations = mergeOperations(server.PendingOperations, request.S2S_Gossip_Operations)
 	// latestVersionVector := append([]uint64(nil), server.VectorClock...)
 
-	i := uint64(0)
+	var i = uint64(0)
 
 	for i < uint64(len(server.PendingOperations)) {
 		if oneOffVersionVector(server.VectorClock, server.PendingOperations[i].VersionVector) {
@@ -262,7 +264,7 @@ func receiveGossip(server Server, request Message) Server {
 			// latestVersionVector = append([]uint64(nil), server.VectorClock...)
 			continue
 		}
-		i++
+		i = i + 1
 	}
 
 	return server

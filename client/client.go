@@ -109,6 +109,7 @@ func (c *RpcClient) AcknowledgeRequest(request *server.Message, reply *server.Me
 		if c.SessionSemantic == 2 || c.SessionSemantic == 3 || c.SessionSemantic == 4 {
 			c.VersionVector = request.S2C_Client_VersionVector
 		}
+		fmt.Print(request.S2C_Client_Data)
 	}
 
 	if request.S2C_Client_OperationType == 1 {
