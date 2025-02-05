@@ -271,11 +271,12 @@ func receiveGossip(server Server, request Message) Server {
 }
 
 func acknowledgeGossip(server Server, request Message) Server {
-	server.GossipAcknowledgements[request.S2S_Acknowledge_Gossip_Sending_ServerId] = request.S2S_Gossip_Index
+	server.GossipAcknowledgements[request.S2S_Acknowledge_Gossip_Sending_ServerId] = request.S2S_Acknowledge_Gossip_Index - 1 // double check -1
 	return server
 }
 
 func getGossipOperations(server Server, serverId uint64) []Operation {
+	// fmt.Println(len(server.MyOperations[server.GossipAcknowledgements[serverId]:]))
 	return append([]Operation(nil), server.MyOperations[server.GossipAcknowledgements[serverId]:]...)
 }
 
@@ -284,6 +285,8 @@ func checkIfDuplicateRequest(server Server, request Message) bool {
 }
 
 func processClientRequest(server Server, request Message) (bool, Server, Message) {
+	fmt.Println(request.C2S_Client_RequestNumber)
+
 	reply := Message{}
 
 	// fmt.Print(request.C2S_Client_VersionVector)
@@ -369,6 +372,7 @@ func processRequest(server Server, request Message) (Server, []Message) {
 		}
 
 	} else if request.MessageType == 2 { // acknowledging a gossip request
+		// fmt.Print("WE GET")
 		s = acknowledgeGossip(s, request)
 	} else if request.MessageType == 3 { // sending gossip request
 		// fmt.Print("We are gossiping")
@@ -429,6 +433,10 @@ func (s *RpcServer) RpcHandler(request *Message, reply *Message) error {
 				go func() {
 					protocol.Invoke(*peers[outGoingRequest[index].S2S_Gossip_Receiving_ServerId], "RpcServer.RpcHandler", &outGoingRequest[index], &Message{})
 				}()
+			} else if outGoingRequest[index].MessageType == 2 {
+				go func() {
+					protocol.Invoke(*peers[outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId], "RpcServer.RpcHandler", &outGoingRequest[index], &Message{})
+				}()
 			} else if outGoingRequest[index].MessageType == 4 {
 				go func() {
 					// fmt.Print("We are here")
@@ -466,7 +474,7 @@ func (s *RpcServer) Start() error {
 
 	go func() error {
 		for {
-			ms := 50
+			ms := 100
 
 			time.Sleep(time.Duration(ms) * time.Millisecond)
 

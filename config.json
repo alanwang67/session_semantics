@@ -3,17 +3,17 @@
       {
         "id": 0,
         "network": "tcp",
-        "address": "0.0.0.0:10000"
+        "address": "127.0.0.1:10000"
       },
       {
         "id": 1,
         "network": "tcp",
-        "address": "0.0.0.0:10001"
+        "address": "127.0.0.1:10001"
       },
       {
         "id": 2,
         "network": "tcp",
-        "address": "0.0.0.0:10002"
+        "address": "127.0.0.1:10002"
       }
     ],
     "clients": [
@@ -21,19 +21,19 @@
         "id": 0,
         "servers": [10, 11, 12],
         "network": "tcp",
-        "address": "0.0.0.0:10003"
+        "address": "127.0.0.1:10003"
       },
       {
         "id": 1,
         "servers": [10, 11, 12],
         "network": "tcp",
-        "address": "0.0.0.0:10004"
+        "address": "127.0.0.1:10004"
       },
       {
         "id": 2,
         "servers": [10, 11, 12],
         "network": "tcp",
-        "address": "0.0.0.0:10005"
+        "address": "127.0.0.1:10005"
       }
     ]
   }

@@ -61,7 +61,7 @@ func (c *RpcClient) Start() error {
 
 	i := uint64(0)
 	c.mu.Lock()
-	for i < uint64(100) {
+	for i < uint64(100000) {
 		for !c.Ack {
 			c.mu.Unlock()
 			time.Sleep(5 * time.Millisecond)
@@ -72,8 +72,9 @@ func (c *RpcClient) Start() error {
 
 		c.communicateWithServer(1, uint64(rand.Uint64()%uint64((len(c.Servers)))), rand.Uint64())
 		c.mu.Lock()
-		fmt.Println(i)
+		// fmt.Println(i)
 		fmt.Println(c.VersionVector)
+		fmt.Println(c.RequestNumber)
 		i++
 	}
 	c.mu.Unlock()
@@ -194,7 +195,7 @@ func (c *RpcClient) communicateWithServer(operationType uint64, serverId uint64,
 			Ack:             c.Ack,
 		}
 		message := write(client, value)
-		fmt.Print(message)
+		// fmt.Print(message)
 		protocol.Invoke(*c.Servers[serverId], "RpcServer.RpcHandler", &message, &server.Message{})
 	}
 
