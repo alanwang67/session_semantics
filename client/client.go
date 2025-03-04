@@ -148,16 +148,12 @@ func processRequest(client Client, requestType uint64, serverId uint64, value ui
 		client.Ack = false
 		return client, read(client, serverId)
 	} else if requestType == 2 {
-		if ackMessage.S2C_Client_OperationType == 0 {
-			if client.SessionSemantic == 2 || client.SessionSemantic == 3 || client.SessionSemantic == 4 {
-				client.VersionVector = ackMessage.S2C_Client_VersionVector
-			}
+		if ackMessage.S2C_Client_OperationType == 0 && (client.SessionSemantic == 2 || client.SessionSemantic == 3 || client.SessionSemantic == 4) {
+			client.VersionVector = ackMessage.S2C_Client_VersionVector
 		}
 
-		if ackMessage.S2C_Client_OperationType == 1 {
-			if client.SessionSemantic == 0 || client.SessionSemantic == 1 || client.SessionSemantic == 4 {
-				client.VersionVector = ackMessage.S2C_Client_VersionVector
-			}
+		if ackMessage.S2C_Client_OperationType == 1 && (client.SessionSemantic == 0 || client.SessionSemantic == 1 || client.SessionSemantic == 4) {
+			client.VersionVector = ackMessage.S2C_Client_VersionVector
 		}
 		client.Ack = true
 		return client, server.Message{}
