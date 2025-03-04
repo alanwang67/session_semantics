@@ -113,7 +113,7 @@ func write(client Client, serverId uint64, value uint64) server.Message {
 			MessageType:              0,
 			C2S_Client_Id:            client.Id,
 			C2S_Client_OperationType: 1,
-			C2S_Client_Data:          10,
+			C2S_Client_Data:          value,
 			C2S_Server_Id:            serverId,
 			C2S_Client_VersionVector: make([]uint64, client.NumberOfServers),
 		}
