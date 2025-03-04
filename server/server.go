@@ -41,13 +41,10 @@ type Message struct {
 }
 
 type RpcServer struct {
-	Id                uint64
-	Self              *protocol.Connection
-	Peers             []*protocol.Connection
-	Clients           []*protocol.Connection
-	SelfConnection    *rpc.Client
-	PeersConnection   []*rpc.Client
-	ClientsConnection []*rpc.Client
+	Id      uint64
+	Self    *protocol.Connection
+	Peers   []*protocol.Connection
+	Clients []*protocol.Connection
 
 	UnsatisfiedRequests    []Message
 	VectorClock            []uint64
@@ -69,16 +66,12 @@ type Server struct {
 	GossipAcknowledgements []uint64
 }
 
-func New(id uint64, self *protocol.Connection, peers []*protocol.Connection, clients []*protocol.Connection, selfConnection *rpc.Client,
-	peersConnection []*rpc.Client, clientsConnection []*rpc.Client) *RpcServer {
+func New(id uint64, self *protocol.Connection, peers []*protocol.Connection, clients []*protocol.Connection) *RpcServer {
 	server := &RpcServer{
 		Id:                     id,
 		Self:                   self,
 		Peers:                  peers,
 		Clients:                clients,
-		SelfConnection:         selfConnection,
-		PeersConnection:        peersConnection,
-		ClientsConnection:      clientsConnection,
 		UnsatisfiedRequests:    make([]Message, 0),
 		VectorClock:            make([]uint64, len(peers)),
 		OperationsPerformed:    make([]Operation, 0),
@@ -211,34 +204,26 @@ func mergeOperations(l1 []Operation, l2 []Operation) []Operation {
 		return make([]Operation, 0)
 	}
 
-	var intermediate = append([]Operation{}, l1...)
+	var output = append([]Operation{}, l1...)
 	var i = uint64(0)
 	var l = uint64(len(l2))
 
 	for i < l {
-		intermediate = sortedInsert(intermediate, l2[i])
+		output = sortedInsert(output, l2[i])
 		i++
 	}
 
 	var prev = uint64(1)
 	var curr = uint64(1)
-	for curr < uint64(len(intermediate)) {
-		if !equalOperations(intermediate[curr-1], intermediate[curr]) {
-			intermediate[prev] = intermediate[curr]
+	for curr < uint64(len(output)) {
+		if !equalOperations(output[curr-1], output[curr]) {
+			output[prev] = output[curr]
 			prev = prev + 1
 		}
 		curr = curr + 1
 	}
 
-	var output = make([]Operation, 0)
-
-	i = uint64(0)
-	l = prev
-	for i < prev {
-		output = append(output, intermediate[i])
-		i = i + 1
-	}
-	return output
+	return output[:prev]
 }
 
 func deleteAtIndexOperation(l []Operation, index uint64) []Operation {
@@ -283,16 +268,24 @@ func receiveGossip(server Server, request Message) Server {
 }
 
 func acknowledgeGossip(server Server, request Message) Server {
+	if request.S2S_Acknowledge_Gossip_Sending_ServerId >= uint64(len(server.GossipAcknowledgements)) {
+		return server
+	}
 	server.GossipAcknowledgements[request.S2S_Acknowledge_Gossip_Sending_ServerId] = maxTwoInts(server.GossipAcknowledgements[request.S2S_Acknowledge_Gossip_Sending_ServerId], request.S2S_Acknowledge_Gossip_Index)
 	return server
 }
 
 func getGossipOperations(server Server, serverId uint64) []Operation {
-	return append([]Operation(nil), server.MyOperations[server.GossipAcknowledgements[serverId]:]...)
+	var ret = make([]Operation, 0)
+	if serverId >= uint64(len(server.GossipAcknowledgements)) || (server.GossipAcknowledgements[serverId] >= uint64(len(server.MyOperations))) {
+		return ret
+	}
+
+	return append(ret, server.MyOperations[server.GossipAcknowledgements[serverId]:]...)
 }
 
 func processClientRequest(server Server, request Message) (bool, Server, Message) {
-	reply := Message{}
+	var reply = Message{}
 
 	if !compareVersionVector(server.VectorClock, request.C2S_Client_VersionVector) {
 		return false, server, reply
@@ -429,7 +422,7 @@ func (s *RpcServer) RpcHandler(request *Message, reply *Message) error {
 				go func() {
 					// fmt.Print("We are here")
 					// fmt.Print(*clients[outGoingRequest[index].S2C_Client_Number])
-					protocol.Invoke(*clients[outGoingRequest[index].S2C_Client_Number], "RpcClient.AcknowledgeRequest", &outGoingRequest[index], &Message{})
+					protocol.Invoke(*clients[outGoingRequest[index].S2C_Client_Number], "RpcClient.AcknowledgeMessage", &outGoingRequest[index], &Message{})
 				}()
 			}
 			i++
