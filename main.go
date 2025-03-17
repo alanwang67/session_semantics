@@ -54,9 +54,9 @@ func main() {
 
 	switch os.Args[1] {
 	case "client":
-		client.New(id, clients[id].Address, 4, clients[id], servers).Start()
+		client.Start(client.New(id, clients[id].Address, 4, clients[id], servers))
 	case "server":
-		server.New(id, servers[id], servers, clients).Start()
+		server.Start(server.New(id, servers[id], servers, clients))
 	default:
 		log.Fatalf("unknown command: %s", os.Args[1])
 	}

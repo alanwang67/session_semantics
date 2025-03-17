@@ -1,9 +1,9 @@
 package server
 
 import (
+	"encoding/gob"
 	"fmt"
 	"net"
-	"net/rpc"
 	"sync"
 	"time"
 
@@ -40,11 +40,12 @@ type Message struct {
 	S2C_Client_Number        uint64
 }
 
-type RpcServer struct {
-	Id      uint64
-	Self    *protocol.Connection
-	Peers   []*protocol.Connection
-	Clients []*protocol.Connection
+type NServer struct {
+	Id             uint64
+	Self           *protocol.Connection
+	Peers          []*protocol.Connection
+	PeerConnection map[uint64]net.Conn
+	Clients        map[uint64]net.Conn
 
 	UnsatisfiedRequests    []Message
 	VectorClock            []uint64
@@ -66,12 +67,13 @@ type Server struct {
 	GossipAcknowledgements []uint64
 }
 
-func New(id uint64, self *protocol.Connection, peers []*protocol.Connection, clients []*protocol.Connection) *RpcServer {
-	server := &RpcServer{
+func New(id uint64, self *protocol.Connection, peers []*protocol.Connection, clients []*protocol.Connection) *NServer {
+	server := &NServer{
 		Id:                     id,
 		Self:                   self,
 		Peers:                  peers,
-		Clients:                clients,
+		PeerConnection:         make(map[uint64]net.Conn),
+		Clients:                make(map[uint64]net.Conn),
 		UnsatisfiedRequests:    make([]Message, 0),
 		VectorClock:            make([]uint64, len(peers)),
 		OperationsPerformed:    make([]Operation, 0),
@@ -365,11 +367,16 @@ func processRequest(server Server, request Message) (Server, []Message) {
 		for i < server.NumberOfServers {
 			if uint64(i) != uint64(s.Id) {
 				index := uint64(i)
+				operations := getGossipOperations(s, index)
+				if uint64(len(operations)) == uint64(0) {
+					continue
+				}
+
 				outGoingRequests = append(outGoingRequests,
 					Message{MessageType: 1,
 						S2S_Gossip_Sending_ServerId:   s.Id,
 						S2S_Gossip_Receiving_ServerId: index,
-						S2S_Gossip_Operations:         getGossipOperations(s, index),
+						S2S_Gossip_Operations:         operations,
 						S2S_Gossip_Index:              uint64(len(s.MyOperations) - 1),
 					})
 			}
@@ -380,8 +387,7 @@ func processRequest(server Server, request Message) (Server, []Message) {
 	return s, outGoingRequests
 }
 
-func (s *RpcServer) RpcHandler(request *Message, reply *Message) error {
-	s.mu.Lock()
+func handler(s *NServer, request *Message, msgChannel chan Message) error {
 	ns, outGoingRequest := processRequest(
 		Server{
 			Id:                     s.Id,
@@ -401,61 +407,93 @@ func (s *RpcServer) RpcHandler(request *Message, reply *Message) error {
 	s.PendingOperations = ns.PendingOperations
 	s.GossipAcknowledgements = ns.GossipAcknowledgements
 
-	s.mu.Unlock()
+	i := uint64(0)
+	l := uint64(len(outGoingRequest))
+	for i < l {
+		index := i
+		if outGoingRequest[index].MessageType == 1 {
+			msgChannel <- outGoingRequest[index]
+		} else if outGoingRequest[index].MessageType == 2 {
+			// msgChannel <- outGoingRequest[index]
+		} else if outGoingRequest[index].MessageType == 4 {
+			go func() {
+				c := s.Clients[outGoingRequest[index].S2C_Client_Number]
+				enc := gob.NewEncoder(c)
+				enc.Encode(&outGoingRequest[index])
+			}()
+		}
+		i++
+	}
 
-	// send RPC request to client here
-	// change request such that it has an address
-	go func(peers []*protocol.Connection, clients []*protocol.Connection, outGoingRequest []Message) error {
+	return nil
+}
+
+func Start(s *NServer) error {
+	l, err := net.Listen(s.Self.Network, s.Self.Address)
+
+	if err != nil {
+		fmt.Println(err)
+		return nil
+	}
+
+	msgChannel := make(chan Message)
+
+	// send server messages
+	go func(msg chan Message, peerConnection map[uint64]net.Conn) {
+		for {
+			v := <-msg
+			// fmt.Println("We sent a message", v)
+
+			if v.MessageType == 1 {
+				// c, err := net.Dial(s.Peers[v.S2S_Gossip_Receiving_ServerId].Network, s.Peers[v.S2S_Gossip_Receiving_ServerId].Address)
+				// if err != nil {
+				// 	fmt.Print(err)
+				// }
+				c := peerConnection[v.S2S_Gossip_Receiving_ServerId]
+				enc := gob.NewEncoder(c)
+				enc.Encode(&v)
+				// c.Close()
+			}
+			if v.MessageType == 2 {
+				// c := peerConnection[v.S2S_Acknowledge_Gossip_Receiving_ServerId]
+				// c, err := net.Dial(s.Peers[v.S2S_Acknowledge_Gossip_Receiving_ServerId].Network, s.Peers[v.S2S_Acknowledge_Gossip_Receiving_ServerId].Address)
+				// if err != nil {
+				// 	fmt.Print(err)
+				// }
+				// enc := gob.NewEncoder(c)
+				// enc.Encode(&v)
+				// c.Close()
+			}
+		}
+	}(msgChannel, s.PeerConnection)
+
+	go func() {
+		// will this work from just being in scope?
 		i := uint64(0)
-		l := uint64(len(outGoingRequest))
-		for i < l {
-			index := i
-			if outGoingRequest[index].MessageType == 1 {
-				go func() {
-					protocol.Invoke(*peers[outGoingRequest[index].S2S_Gossip_Receiving_ServerId], "RpcServer.RpcHandler", &outGoingRequest[index], &Message{})
-				}()
-			} else if outGoingRequest[index].MessageType == 2 {
-				go func() {
-					protocol.Invoke(*peers[outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId], "RpcServer.RpcHandler", &outGoingRequest[index], &Message{})
-				}()
-			} else if outGoingRequest[index].MessageType == 4 {
-				go func() {
-					// fmt.Print("We are here")
-					// fmt.Print(*clients[outGoingRequest[index].S2C_Client_Number])
-					protocol.Invoke(*clients[outGoingRequest[index].S2C_Client_Number], "RpcClient.AcknowledgeMessage", &outGoingRequest[index], &Message{})
-				}()
+		for i < uint64(len(s.Peers)) {
+			if i != s.Id {
+				for {
+					c, err := net.Dial(s.Peers[i].Network, s.Peers[i].Address)
+					if err != nil {
+						continue
+					}
+					s.mu.Lock()
+					s.PeerConnection[i] = c
+					s.mu.Unlock()
+
+					break
+				}
+				fmt.Println("Connected with", i)
 			}
 			i++
 		}
-		return nil
-	}(s.Peers, s.Clients, outGoingRequest)
-
-	return nil
-}
-
-// for testing purposes
-func (s *RpcServer) PrintData(request *Message, reply *Message) error {
-	s.mu.Lock()
-	fmt.Println(s.OperationsPerformed)
-	// fmt.Println("MyOperations", s.MyOperations)
-	// fmt.Println("Vector Clock", s.VectorClock)
-	// fmt.Println("Operations Performed", s.OperationsPerformed)
-	// fmt.Println("Pending Operations", s.PendingOperations)
-	// fmt.Println("My Operations", s.MyOperations)
-	s.mu.Unlock()
-	return nil
-}
-
-func (s *RpcServer) Start() error {
-
-	l, _ := net.Listen(s.Self.Network, s.Self.Address)
-	defer l.Close()
-
-	rpc.Register(s)
+		// fmt.Print("Done")
+	}()
 
 	go func() error {
 		for {
-			ms := 50
+			ms := 1
+			// rand.IntN(20) + 30
 
 			time.Sleep(time.Duration(ms) * time.Millisecond)
 
@@ -466,17 +504,53 @@ func (s *RpcServer) Start() error {
 				continue
 			}
 
-			id := s.Id
 			request := Message{MessageType: 3}
-			reply := Message{}
+
+			handler(s, &request, msgChannel)
 
 			s.mu.Unlock()
-
-			protocol.Invoke(*s.Peers[id], "RpcServer.RpcHandler", &request, &reply)
 		}
 	}()
 
 	for {
-		rpc.Accept(l)
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println(err)
+			return nil
+		}
+
+		// fmt.Println(conn.RemoteAddr())
+
+		go func(s *NServer, c net.Conn) error { // make a for loop here, have it wait until the client request, block on recv?
+			for {
+				// check if this is a server or not
+				m := Message{}
+				dec := gob.NewDecoder(c)
+				err := dec.Decode(&m)
+				if err != nil {
+					// EOF is coming from here for some reason?
+					return err
+				}
+
+				s.mu.Lock()
+
+				// fmt.Println(m)
+				if m.MessageType == 0 {
+					s.Clients[m.C2S_Client_Id] = c
+				}
+
+				// for testing purposes
+				if m.MessageType == 4 {
+					fmt.Println(s.OperationsPerformed)
+				}
+
+				handler(s, &m, msgChannel)
+				s.mu.Unlock()
+			}
+		}(s, conn)
 	}
 }
+
+// use channels to order
+// have clients thread
+// have servers connect by loop
