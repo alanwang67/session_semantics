@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/gob"
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"sync"
 	"time"
@@ -41,11 +42,12 @@ type Message struct {
 }
 
 type NServer struct {
-	Id             uint64
-	Self           *protocol.Connection
-	Peers          []*protocol.Connection
-	PeerConnection map[uint64]net.Conn
-	Clients        map[uint64]net.Conn
+	Id                uint64
+	Self              *protocol.Connection
+	Peers             []*protocol.Connection
+	PeerConnection    map[uint64]*gob.Encoder
+	PeerAckConnection map[uint64]*gob.Encoder
+	Clients           map[uint64]*gob.Encoder
 
 	UnsatisfiedRequests    []Message
 	VectorClock            []uint64
@@ -72,8 +74,9 @@ func New(id uint64, self *protocol.Connection, peers []*protocol.Connection, cli
 		Id:                     id,
 		Self:                   self,
 		Peers:                  peers,
-		PeerConnection:         make(map[uint64]net.Conn),
-		Clients:                make(map[uint64]net.Conn),
+		PeerConnection:         make(map[uint64]*gob.Encoder),
+		PeerAckConnection:      make(map[uint64]*gob.Encoder),
+		Clients:                make(map[uint64]*gob.Encoder),
 		UnsatisfiedRequests:    make([]Message, 0),
 		VectorClock:            make([]uint64, len(peers)),
 		OperationsPerformed:    make([]Operation, 0),
@@ -332,6 +335,10 @@ func processRequest(server Server, request Message) (Server, []Message) {
 	if request.MessageType == 0 {
 		var succeeded = false
 		var reply = Message{}
+		if len(request.C2S_Client_VersionVector) == 0 {
+			fmt.Println(request)
+			panic(request)
+		}
 		succeeded, s, reply = processClientRequest(s, request)
 		if succeeded {
 			outGoingRequests = append(outGoingRequests, reply)
@@ -387,7 +394,7 @@ func processRequest(server Server, request Message) (Server, []Message) {
 	return s, outGoingRequests
 }
 
-func handler(s *NServer, request *Message, msgChannel chan Message) error {
+func handler(s *NServer, request *Message) error {
 	ns, outGoingRequest := processRequest(
 		Server{
 			Id:                     s.Id,
@@ -412,13 +419,21 @@ func handler(s *NServer, request *Message, msgChannel chan Message) error {
 	for i < l {
 		index := i
 		if outGoingRequest[index].MessageType == 1 {
-			msgChannel <- outGoingRequest[index]
+			// c, _ := net.Dial(s.Peers[outGoingRequest[index].S2S_Gossip_Receiving_ServerId].Network, s.Peers[outGoingRequest[index].S2S_Gossip_Receiving_ServerId].Address)
+			// enc := gob.NewEncoder(s.PeerConnection[outGoingRequest[index].S2S_Gossip_Receiving_ServerId])
+			// enc.Encode(&outGoingRequest[index])
+			// c.Close()
+			// fmt.Println(outGoingRequest[index])
+			s.PeerConnection[outGoingRequest[index].S2S_Gossip_Receiving_ServerId].Encode(&outGoingRequest[index])
+			// fmt.Println(err)
 		} else if outGoingRequest[index].MessageType == 2 {
-			// msgChannel <- outGoingRequest[index]
+			// enc := gob.NewEncoder(s.PeerAckConnection[outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId])
+			// enc.Encode(&outGoingRequest[index])
+			s.PeerAckConnection[outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId].Encode(&outGoingRequest[index])
+			// c.Close()
 		} else if outGoingRequest[index].MessageType == 4 {
 			go func() {
-				c := s.Clients[outGoingRequest[index].S2C_Client_Number]
-				enc := gob.NewEncoder(c)
+				enc := s.Clients[outGoingRequest[index].S2C_Client_Number]
 				enc.Encode(&outGoingRequest[index])
 			}()
 		}
@@ -435,37 +450,37 @@ func Start(s *NServer) error {
 		fmt.Println(err)
 		return nil
 	}
-
-	msgChannel := make(chan Message)
+	gob.Register(Message{})
 
 	// send server messages
-	go func(msg chan Message, peerConnection map[uint64]net.Conn) {
-		for {
-			v := <-msg
-			// fmt.Println("We sent a message", v)
+	// go func(peerConnection map[uint64]net.Conn) {
+	// 	for {
+	// 		v := <-msg
+	// 		// fmt.Println("We sent a message", v)
 
-			if v.MessageType == 1 {
-				// c, err := net.Dial(s.Peers[v.S2S_Gossip_Receiving_ServerId].Network, s.Peers[v.S2S_Gossip_Receiving_ServerId].Address)
-				// if err != nil {
-				// 	fmt.Print(err)
-				// }
-				c := peerConnection[v.S2S_Gossip_Receiving_ServerId]
-				enc := gob.NewEncoder(c)
-				enc.Encode(&v)
-				// c.Close()
-			}
-			if v.MessageType == 2 {
-				// c := peerConnection[v.S2S_Acknowledge_Gossip_Receiving_ServerId]
-				// c, err := net.Dial(s.Peers[v.S2S_Acknowledge_Gossip_Receiving_ServerId].Network, s.Peers[v.S2S_Acknowledge_Gossip_Receiving_ServerId].Address)
-				// if err != nil {
-				// 	fmt.Print(err)
-				// }
-				// enc := gob.NewEncoder(c)
-				// enc.Encode(&v)
-				// c.Close()
-			}
-		}
-	}(msgChannel, s.PeerConnection)
+	// 		if v.MessageType == 1 {
+	// 			// c, err := net.Dial(s.Peers[v.S2S_Gossip_Receiving_ServerId].Network, s.Peers[v.S2S_Gossip_Receiving_ServerId].Address)
+	// 			// if err != nil {
+	// 			// 	fmt.Print(err)
+	// 			// }
+	// 			c := peerConnection[v.S2S_Gossip_Receiving_ServerId]
+	// 			enc := gob.NewEncoder(c)
+	// 			enc.Encode(&v)
+	// 			// c.Close()
+	// 		}
+	// 		if v.MessageType == 2 {
+	// 			c := peerConnection[v.S2S_Acknowledge_Gossip_Receiving_ServerId]
+	// 			// c, err := net.Dial(s.Peers[v.S2S_Acknowledge_Gossip_Receiving_ServerId].Network, s.Peers[v.S2S_Acknowledge_Gossip_Receiving_ServerId].Address)
+	// 			// if err != nil {
+	// 			// 	fmt.Print(err)
+	// 			// }
+	// 			enc := gob.NewEncoder(c)
+	// 			enc.Encode(&v)
+	// 			// c.Close()
+	// 		}
+	// 		time.Sleep(30 * time.Millisecond)
+	// 	}
+	// }(msgChannel, s.PeerConnection)
 
 	go func() {
 		// will this work from just being in scope?
@@ -478,7 +493,32 @@ func Start(s *NServer) error {
 						continue
 					}
 					s.mu.Lock()
-					s.PeerConnection[i] = c
+					enc := gob.NewEncoder(c)
+					s.PeerConnection[i] = enc
+					s.mu.Unlock()
+
+					break
+				}
+				// fmt.Println("Connected with", i)
+			}
+			i++
+		}
+		// fmt.Print("Done")
+	}()
+
+	go func() {
+		// will this work from just being in scope?
+		i := uint64(0)
+		for i < uint64(len(s.Peers)) {
+			if i != s.Id {
+				for {
+					c, err := net.Dial(s.Peers[i].Network, s.Peers[i].Address)
+					if err != nil {
+						continue
+					}
+					s.mu.Lock()
+					enc := gob.NewEncoder(c)
+					s.PeerAckConnection[i] = enc
 					s.mu.Unlock()
 
 					break
@@ -492,10 +532,10 @@ func Start(s *NServer) error {
 
 	go func() error {
 		for {
-			ms := 1
+			ms := rand.IntN(30) + 50
 			// rand.IntN(20) + 30
 
-			time.Sleep(time.Duration(ms) * time.Millisecond)
+			time.Sleep(time.Duration(ms) * time.Microsecond)
 
 			s.mu.Lock()
 
@@ -506,7 +546,7 @@ func Start(s *NServer) error {
 
 			request := Message{MessageType: 3}
 
-			handler(s, &request, msgChannel)
+			handler(s, &request)
 
 			s.mu.Unlock()
 		}
@@ -522,21 +562,29 @@ func Start(s *NServer) error {
 		// fmt.Println(conn.RemoteAddr())
 
 		go func(s *NServer, c net.Conn) error { // make a for loop here, have it wait until the client request, block on recv?
+			dec := gob.NewDecoder(c)
+
 			for {
+				// fmt.Println(c)
 				// check if this is a server or not
 				m := Message{}
-				dec := gob.NewDecoder(c)
 				err := dec.Decode(&m)
 				if err != nil {
 					// EOF is coming from here for some reason?
+					fmt.Print(err)
 					return err
 				}
 
 				s.mu.Lock()
 
-				// fmt.Println(m)
+				fmt.Println("message: ", m.MessageType)
+				// fmt.Println("server: ", s, "\n")
 				if m.MessageType == 0 {
-					s.Clients[m.C2S_Client_Id] = c
+					_, ok := s.Clients[m.C2S_Client_Id]
+					if !ok {
+						enc := gob.NewEncoder(c)
+						s.Clients[m.C2S_Client_Id] = enc
+					}
 				}
 
 				// for testing purposes
@@ -544,7 +592,7 @@ func Start(s *NServer) error {
 					fmt.Println(s.OperationsPerformed)
 				}
 
-				handler(s, &m, msgChannel)
+				handler(s, &m)
 				s.mu.Unlock()
 			}
 		}(s, conn)
@@ -554,3 +602,5 @@ func Start(s *NServer) error {
 // use channels to order
 // have clients thread
 // have servers connect by loop
+
+// what is EOF message,

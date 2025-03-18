@@ -9,11 +9,6 @@
         "id": 1,
         "network": "tcp",
         "address": "127.0.0.1:10001"
-      },
-      {
-        "id": 2,
-        "network": "tcp",
-        "address": "127.0.0.1:10002"
       }
     ],
     "clients": [
@@ -28,12 +23,6 @@
         "servers": [10, 11, 12],
         "network": "tcp",
         "address": "127.0.0.1:10004"
-      },
-      {
-        "id": 2,
-        "servers": [10, 11, 12],
-        "network": "tcp",
-        "address": "127.0.0.1:10005"
       }
     ]
   }

@@ -16,6 +16,8 @@ type NClient struct {
 	Address         string
 	Self            *protocol.Connection
 	Servers         []net.Conn
+	ServerDecoders  []*gob.Decoder
+	ServerEncoder   []*gob.Encoder
 	VersionVector   []uint64
 	RequestNumber   uint64
 	SessionSemantic uint64
@@ -33,14 +35,18 @@ type Client struct {
 func New(id uint64, address string, sessionSemantic uint64, self *protocol.Connection, servers []*protocol.Connection) *NClient {
 	i := uint64(0)
 	serversConn := make([]net.Conn, len(servers))
+	serverDecoders := make([]*gob.Decoder, len(servers))
+	serverEncoders := make([]*gob.Encoder, len(servers))
 
-	// is this okay since we are assuming all servers are running
 	for i < uint64(len(servers)) {
 		c, err := net.Dial(servers[i].Network, servers[i].Address)
+		fmt.Println(c.LocalAddr().String())
 		if err != nil {
 			fmt.Println(err)
 		}
 		serversConn[i] = c
+		serverDecoders[i] = gob.NewDecoder(c)
+		serverEncoders[i] = gob.NewEncoder(c)
 		i += 1
 	}
 
@@ -49,12 +55,15 @@ func New(id uint64, address string, sessionSemantic uint64, self *protocol.Conne
 		Address:         address,
 		Self:            self,
 		Servers:         serversConn,
+		ServerDecoders:  serverDecoders,
+		ServerEncoder:   serverEncoders,
 		SessionSemantic: sessionSemantic,
 		VersionVector:   make([]uint64, len(servers)),
 	}
 }
 
 func Start(c *NClient) error {
+	gob.Register(server.Message{})
 	i := uint64(0)
 	start := time.Now()
 	for i < uint64(100000) {
@@ -69,18 +78,16 @@ func Start(c *NClient) error {
 		// fmt.Print(outGoingMessage, "\n")
 
 		var m server.Message
-		enc := gob.NewEncoder(c.Servers[serverId])
-		dec := gob.NewDecoder(c.Servers[serverId])
 		// fmt.Print(outGoingMessage, "\n")
-		err := enc.Encode(&outGoingMessage)
+		err := c.ServerEncoder[serverId].Encode(&outGoingMessage)
 		if err != nil {
 			fmt.Print(err)
+			return err
 		}
-
-		err = dec.Decode(&m)
+		err = c.ServerDecoders[serverId].Decode(&m)
 		if err != nil {
 			fmt.Print(err)
-			// return err
+			return err
 		}
 		// once we get a response back we need to update our acknowledgement?
 		handler(c, 2, 0, 0, m)
