@@ -532,7 +532,7 @@ func Start(s *NServer) error {
 
 	go func() error {
 		for {
-			ms := rand.IntN(30) + 50
+			ms := rand.IntN(300) + 500
 			// rand.IntN(20) + 30
 
 			time.Sleep(time.Duration(ms) * time.Microsecond)
@@ -577,7 +577,7 @@ func Start(s *NServer) error {
 
 				s.mu.Lock()
 
-				fmt.Println("message: ", m.MessageType)
+				// fmt.Println("message: ", m.MessageType)
 				// fmt.Println("server: ", s, "\n")
 				if m.MessageType == 0 {
 					_, ok := s.Clients[m.C2S_Client_Id]
