@@ -54,7 +54,7 @@ func main() {
 
 	switch os.Args[1] {
 	case "client":
-		client.Start(client.New(id, clients[id].Address, 4, clients[id], servers))
+		client.Start(client.New(id, clients[id].Address, 5, clients[id], servers))
 	case "server":
 		server.Start(server.New(id, servers[id], servers, clients))
 	default:

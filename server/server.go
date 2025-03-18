@@ -447,7 +447,7 @@ func Start(s *NServer) error {
 		fmt.Println(err)
 		return nil
 	}
-	gob.Register(Message{})
+	// gob.Register(Message{})
 
 	// send server messages
 	// go func(peerConnection map[uint64]net.Conn) {

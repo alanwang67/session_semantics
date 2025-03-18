@@ -12,29 +12,27 @@ import (
 )
 
 type NClient struct {
-	Id              uint64
-	Address         string
-	Self            *protocol.Connection
-	Servers         []net.Conn
-	ServerDecoders  []*gob.Decoder
-	ServerEncoder   []*gob.Encoder
-	VersionVector   []uint64
-	RequestNumber   uint64
-	SessionSemantic uint64
-	// Ack             bool
+	Id                 uint64
+	Address            string
+	Self               *protocol.Connection
+	ServerDecoders     []*gob.Decoder
+	ServerEncoder      []*gob.Encoder
+	WriteVersionVector []uint64
+	ReadVersionVector  []uint64
+	SessionSemantic    uint64
 }
 
 type Client struct {
-	Id              uint64
-	NumberOfServers uint64
-	VersionVector   []uint64
-	SessionSemantic uint64
+	Id                 uint64
+	NumberOfServers    uint64
+	WriteVersionVector []uint64
+	ReadVersionVector  []uint64
+	SessionSemantic    uint64
 	// Ack             bool
 }
 
 func New(id uint64, address string, sessionSemantic uint64, self *protocol.Connection, servers []*protocol.Connection) *NClient {
 	i := uint64(0)
-	serversConn := make([]net.Conn, len(servers))
 	serverDecoders := make([]*gob.Decoder, len(servers))
 	serverEncoders := make([]*gob.Encoder, len(servers))
 
@@ -44,36 +42,31 @@ func New(id uint64, address string, sessionSemantic uint64, self *protocol.Conne
 		if err != nil {
 			fmt.Println(err)
 		}
-		serversConn[i] = c
 		serverDecoders[i] = gob.NewDecoder(c)
 		serverEncoders[i] = gob.NewEncoder(c)
 		i += 1
 	}
 
 	return &NClient{
-		Id:              id,
-		Address:         address,
-		Self:            self,
-		Servers:         serversConn,
-		ServerDecoders:  serverDecoders,
-		ServerEncoder:   serverEncoders,
-		SessionSemantic: sessionSemantic,
-		VersionVector:   make([]uint64, len(servers)),
+		Id:                 id,
+		Address:            address,
+		Self:               self,
+		ServerDecoders:     serverDecoders,
+		ServerEncoder:      serverEncoders,
+		WriteVersionVector: make([]uint64, len(servers)),
+		ReadVersionVector:  make([]uint64, len(servers)),
+		SessionSemantic:    sessionSemantic,
 	}
 }
 
 func Start(c *NClient) error {
-	gob.Register(server.Message{})
+	// gob.Register(server.Message{})
 	i := uint64(0)
 	start := time.Now()
 	for i < uint64(50000) {
-		v := uint64(rand.Int64())
 		fmt.Println(i)
-		// fmt.Print(v, "\n")
-
-		// fmt.Println("Write Value: ", v)
-		// read request: uint64(rand.Uint64()%uint64(2))
-		serverId := uint64(rand.Uint64() % uint64((len(c.Servers))))
+		v := uint64(rand.Int64())
+		serverId := uint64(rand.Uint64() % uint64((len(c.ServerDecoders))))
 		outGoingMessage := handler(c, 1, serverId, v, server.Message{})
 		// fmt.Print(outGoingMessage, "\n")
 
@@ -100,7 +93,7 @@ func Start(c *NClient) error {
 
 	i = uint64(0)
 
-	for i < uint64(len(c.Servers)) {
+	for i < uint64(len(c.ServerDecoders)) {
 		outGoingMessage := server.Message{MessageType: 4}
 		err := c.ServerEncoder[i].Encode(&outGoingMessage)
 		if err != nil {
@@ -114,64 +107,120 @@ func Start(c *NClient) error {
 	}
 }
 
-func write(client Client, serverId uint64, value uint64) server.Message {
-	if client.SessionSemantic == 0 || client.SessionSemantic == 1 || client.SessionSemantic == 4 { // WFR MW Causal
-		return server.Message{
-			MessageType:              0,
-			C2S_Client_Id:            client.Id,
-			C2S_Client_OperationType: 1,
-			C2S_Client_Data:          value,
-			C2S_Server_Id:            serverId,
-			C2S_Client_VersionVector: client.VersionVector,
-		}
+func maxTwoInts(x uint64, y uint64) uint64 {
+	if x > y {
+		return x
 	} else {
-		return server.Message{
-			MessageType:              0,
-			C2S_Client_Id:            client.Id,
-			C2S_Client_OperationType: 1,
-			C2S_Client_Data:          value,
-			C2S_Server_Id:            serverId,
-			C2S_Client_VersionVector: make([]uint64, client.NumberOfServers),
-		}
+		return y
 	}
 }
 
+func maxTS(t1 []uint64, t2 []uint64) []uint64 {
+	var i = uint64(0)
+	var length = uint64(len(t1))
+	var output = make([]uint64, len(t1))
+	for i < length {
+		output[i] = maxTwoInts(t1[i], t2[i])
+		i += 1
+	}
+	return output
+}
+
 func read(client Client, serverId uint64) server.Message {
-	if client.SessionSemantic == 2 || client.SessionSemantic == 3 || client.SessionSemantic == 4 { // MR RYW Causal
+	if client.SessionSemantic == 0 || client.SessionSemantic == 1 || client.SessionSemantic == 2 { // Eventual WFR MW
 		return server.Message{
 			MessageType:              0,
 			C2S_Client_Id:            client.Id,
 			C2S_Client_OperationType: 0,
-			C2S_Server_Id:            serverId,
-			C2S_Client_VersionVector: client.VersionVector,
-		}
-	} else {
-		return server.Message{
-			MessageType:              0,
-			C2S_Client_Id:            client.Id,
-			C2S_Client_OperationType: 0,
+			C2S_Client_Data:          0,
 			C2S_Server_Id:            serverId,
 			C2S_Client_VersionVector: make([]uint64, client.NumberOfServers),
 		}
+	} else if client.SessionSemantic == 3 { // MR
+		return server.Message{
+			MessageType:              0,
+			C2S_Client_Id:            client.Id,
+			C2S_Client_OperationType: 0,
+			C2S_Client_Data:          0,
+			C2S_Server_Id:            serverId,
+			C2S_Client_VersionVector: client.ReadVersionVector,
+		}
+	} else if client.SessionSemantic == 4 { // RYW
+		return server.Message{
+			MessageType:              0,
+			C2S_Client_Id:            client.Id,
+			C2S_Client_OperationType: 0,
+			C2S_Client_Data:          0,
+			C2S_Server_Id:            serverId,
+			C2S_Client_VersionVector: client.WriteVersionVector,
+		}
+	} else if client.SessionSemantic == 5 { // Causal
+		return server.Message{
+			MessageType:              0,
+			C2S_Client_Id:            client.Id,
+			C2S_Client_OperationType: 0,
+			C2S_Client_Data:          0,
+			C2S_Server_Id:            serverId,
+			C2S_Client_VersionVector: maxTS(client.WriteVersionVector, client.ReadVersionVector),
+		}
 	}
+
+	panic("The session semantic is not suported")
+}
+
+func write(client Client, serverId uint64, value uint64) server.Message {
+	if client.SessionSemantic == 0 || client.SessionSemantic == 3 || client.SessionSemantic == 4 { // Eventual MR RYW
+		return server.Message{
+			MessageType:              0,
+			C2S_Client_Id:            client.Id,
+			C2S_Client_OperationType: 1,
+			C2S_Client_Data:          value,
+			C2S_Server_Id:            serverId,
+			C2S_Client_VersionVector: make([]uint64, client.NumberOfServers),
+		}
+	} else if client.SessionSemantic == 1 { // WFR
+		return server.Message{
+			MessageType:              0,
+			C2S_Client_Id:            client.Id,
+			C2S_Client_OperationType: 1,
+			C2S_Client_Data:          value,
+			C2S_Server_Id:            serverId,
+			C2S_Client_VersionVector: client.ReadVersionVector,
+		}
+	} else if client.SessionSemantic == 2 { // MW
+		return server.Message{
+			MessageType:              0,
+			C2S_Client_Id:            client.Id,
+			C2S_Client_OperationType: 1,
+			C2S_Client_Data:          value,
+			C2S_Server_Id:            serverId,
+			C2S_Client_VersionVector: client.WriteVersionVector,
+		}
+	} else if client.SessionSemantic == 5 { // Causal
+		return server.Message{
+			MessageType:              0,
+			C2S_Client_Id:            client.Id,
+			C2S_Client_OperationType: 1,
+			C2S_Client_Data:          value,
+			C2S_Server_Id:            serverId,
+			C2S_Client_VersionVector: maxTS(client.WriteVersionVector, client.ReadVersionVector),
+		}
+	}
+
+	panic("The session semantic is not suported")
 }
 
 func processRequest(client Client, requestType uint64, serverId uint64, value uint64, ackMessage server.Message) (Client, server.Message) {
 	if requestType == 0 {
 		return client, read(client, serverId)
-		// client.Ack = false
-		// return client, write(client, serverId, value)
 	} else if requestType == 1 {
 		return client, write(client, serverId, value)
-		// client.Ack = false
 	} else if requestType == 2 {
-		//
-		if ackMessage.S2C_Client_OperationType == 0 && (client.SessionSemantic == 2 || client.SessionSemantic == 3 || client.SessionSemantic == 4) {
-			client.VersionVector = ackMessage.S2C_Client_VersionVector
+		if ackMessage.S2C_Client_OperationType == 0 {
+			client.ReadVersionVector = maxTS(client.ReadVersionVector, ackMessage.S2C_Client_VersionVector)
 		}
-
-		if ackMessage.S2C_Client_OperationType == 1 && (client.SessionSemantic == 0 || client.SessionSemantic == 1 || client.SessionSemantic == 4) {
-			client.VersionVector = ackMessage.S2C_Client_VersionVector
+		if ackMessage.S2C_Client_OperationType == 1 {
+			client.WriteVersionVector = ackMessage.S2C_Client_VersionVector
 		}
 		return client, server.Message{}
 	}
@@ -181,13 +230,15 @@ func processRequest(client Client, requestType uint64, serverId uint64, value ui
 
 func handler(c *NClient, requestType uint64, serverId uint64, value uint64, ackMessage server.Message) server.Message {
 	nc, outGoingMessage := processRequest(Client{
-		Id:              c.Id,
-		NumberOfServers: uint64(len(c.Servers)),
-		VersionVector:   c.VersionVector,
-		SessionSemantic: c.SessionSemantic,
+		Id:                 c.Id,
+		NumberOfServers:    uint64(len(c.ServerEncoder)),
+		WriteVersionVector: c.WriteVersionVector,
+		ReadVersionVector:  c.ReadVersionVector,
+		SessionSemantic:    c.SessionSemantic,
 	}, requestType, serverId, value, ackMessage)
 
-	c.VersionVector = nc.VersionVector
+	c.WriteVersionVector = nc.WriteVersionVector
+	c.ReadVersionVector = nc.ReadVersionVector
 
 	return outGoingMessage
 }
