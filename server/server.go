@@ -414,32 +414,30 @@ func handler(s *NServer, request *Message) error {
 	s.PendingOperations = ns.PendingOperations
 	s.GossipAcknowledgements = ns.GossipAcknowledgements
 
-	i := uint64(0)
-	l := uint64(len(outGoingRequest))
-	for i < l {
-		index := i
-		if outGoingRequest[index].MessageType == 1 {
-			// c, _ := net.Dial(s.Peers[outGoingRequest[index].S2S_Gossip_Receiving_ServerId].Network, s.Peers[outGoingRequest[index].S2S_Gossip_Receiving_ServerId].Address)
-			// enc := gob.NewEncoder(s.PeerConnection[outGoingRequest[index].S2S_Gossip_Receiving_ServerId])
-			// enc.Encode(&outGoingRequest[index])
-			// c.Close()
-			// fmt.Println(outGoingRequest[index])
-			s.PeerConnection[outGoingRequest[index].S2S_Gossip_Receiving_ServerId].Encode(&outGoingRequest[index])
-			// fmt.Println(err)
-		} else if outGoingRequest[index].MessageType == 2 {
-			// enc := gob.NewEncoder(s.PeerAckConnection[outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId])
-			// enc.Encode(&outGoingRequest[index])
-			s.PeerAckConnection[outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId].Encode(&outGoingRequest[index])
-			// c.Close()
-		} else if outGoingRequest[index].MessageType == 4 {
-			go func() {
-				enc := s.Clients[outGoingRequest[index].S2C_Client_Number]
-				enc.Encode(&outGoingRequest[index])
-			}()
+	go func() {
+		i := uint64(0)
+		l := uint64(len(outGoingRequest))
+		for i < l {
+			index := i
+			if outGoingRequest[index].MessageType == 1 {
+				// c, _ := net.Dial(s.Peers[outGoingRequest[index].S2S_Gossip_Receiving_ServerId].Network, s.Peers[outGoingRequest[index].S2S_Gossip_Receiving_ServerId].Address)
+				// enc := gob.NewEncoder(s.PeerConnection[outGoingRequest[index].S2S_Gossip_Receiving_ServerId])
+				// enc.Encode(&outGoingRequest[index])
+				// c.Close()
+				// fmt.Println(outGoingRequest[index])
+				s.PeerConnection[outGoingRequest[index].S2S_Gossip_Receiving_ServerId].Encode(&outGoingRequest[index])
+				// fmt.Println(err)
+			} else if outGoingRequest[index].MessageType == 2 {
+				// enc := gob.NewEncoder(s.PeerAckConnection[outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId])
+				// enc.Encode(&outGoingRequest[index])
+				s.PeerAckConnection[outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId].Encode(&outGoingRequest[index])
+				// c.Close()
+			} else if outGoingRequest[index].MessageType == 4 {
+				s.Clients[outGoingRequest[index].S2C_Client_Number].Encode(&outGoingRequest[index])
+			}
+			i++
 		}
-		i++
-	}
-
+	}()
 	return nil
 }
 

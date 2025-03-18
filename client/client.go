@@ -66,7 +66,7 @@ func Start(c *NClient) error {
 	gob.Register(server.Message{})
 	i := uint64(0)
 	start := time.Now()
-	for i < uint64(100000) {
+	for i < uint64(50000) {
 		v := uint64(rand.Int64())
 		fmt.Println(i)
 		// fmt.Print(v, "\n")
@@ -102,9 +102,7 @@ func Start(c *NClient) error {
 
 	for i < uint64(len(c.Servers)) {
 		outGoingMessage := server.Message{MessageType: 4}
-
-		enc := gob.NewEncoder(c.Servers[i])
-		err := enc.Encode(&outGoingMessage)
+		err := c.ServerEncoder[i].Encode(&outGoingMessage)
 		if err != nil {
 			fmt.Print(err)
 		}
