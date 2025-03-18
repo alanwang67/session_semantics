@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/gob"
 	"fmt"
-	"math/rand/v2"
 	"net"
 	"sync"
 	"time"
@@ -530,7 +529,7 @@ func Start(s *NServer) error {
 
 	go func() error {
 		for {
-			ms := rand.IntN(300) + 500
+			ms := 800
 			// rand.IntN(20) + 30
 
 			time.Sleep(time.Duration(ms) * time.Microsecond)
