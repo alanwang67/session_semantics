@@ -55,6 +55,7 @@ func main() {
 	session_semantics := make([]uint64, len(clients))
 	session_semantics[0] = 5
 	session_semantics[1] = 5
+	session_semantics[2] = 5
 
 	switch os.Args[1] {
 	case "client":

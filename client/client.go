@@ -37,7 +37,7 @@ func New(id uint64, self *protocol.Connection, sessionSemantic uint64, servers [
 
 	for i < uint64(len(servers)) {
 		c, err := net.Dial(servers[i].Network, servers[i].Address)
-		fmt.Println(c.LocalAddr().String())
+		// fmt.Println(c.LocalAddr().String())
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -67,14 +67,14 @@ func Start(clients []*protocol.Connection, sessionSemantic []uint64, servers []*
 		i += 1
 	}
 
+	fmt.Println("We got here")
 	i = uint64(0)
 	for i < uint64(len(NClients)) {
-		fmt.Println("Executed")
+		j := i
 		go func(c *NClient) error {
-			fmt.Println("In thread")
 			start := time.Now()
 			index := uint64(0)
-			for index < uint64(1000) {
+			for index < uint64(10000) {
 				fmt.Println(index)
 				v := uint64(rand.Int64())
 				serverId := uint64(rand.Uint64() % uint64((len(c.ServerDecoders))))
@@ -99,8 +99,8 @@ func Start(clients []*protocol.Connection, sessionSemantic []uint64, servers []*
 
 			time.Sleep(1000 * time.Millisecond)
 
+			// put this in a wait group
 			index = uint64(0)
-
 			for index < uint64(len(c.ServerDecoders)) {
 				outGoingMessage := server.Message{MessageType: 4}
 				err := c.ServerEncoder[index].Encode(&outGoingMessage)
@@ -111,10 +111,13 @@ func Start(clients []*protocol.Connection, sessionSemantic []uint64, servers []*
 			}
 
 			return nil
-		}(NClients[i])
+		}(NClients[j])
 
 		i += 1
 	}
+
+	// we can add a wait group here when all the threads are done to print
+	fmt.Println("Done")
 
 	// make sure main thead thread doesn't die before go routines return
 	for {
