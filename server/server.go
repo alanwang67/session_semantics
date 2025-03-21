@@ -68,7 +68,7 @@ type Server struct {
 	GossipAcknowledgements []uint64
 }
 
-func New(id uint64, self *protocol.Connection, peers []*protocol.Connection, clients []*protocol.Connection) *NServer {
+func New(id uint64, self *protocol.Connection, peers []*protocol.Connection) *NServer {
 	server := &NServer{
 		Id:                     id,
 		Self:                   self,
@@ -307,12 +307,12 @@ func processClientRequest(server Server, request Message) (bool, Server, Message
 	} else {
 		server.VectorClock[server.Id] += 1
 
-		server.OperationsPerformed = append(server.OperationsPerformed, Operation{
+		server.OperationsPerformed = sortedInsert(server.OperationsPerformed, Operation{
 			VersionVector: append([]uint64(nil), server.VectorClock...),
 			Data:          request.C2S_Client_Data,
 		})
 
-		server.MyOperations = append(server.MyOperations, Operation{
+		server.MyOperations = sortedInsert(server.MyOperations, Operation{
 			VersionVector: append([]uint64(nil), server.VectorClock...),
 			Data:          request.C2S_Client_Data,
 		})
@@ -374,17 +374,16 @@ func processRequest(server Server, request Message) (Server, []Message) {
 			if uint64(i) != uint64(s.Id) {
 				index := uint64(i)
 				operations := getGossipOperations(s, index)
-				if uint64(len(operations)) == uint64(0) {
-					continue
-				}
+				if uint64(len(operations)) != uint64(0) {
 
-				outGoingRequests = append(outGoingRequests,
-					Message{MessageType: 1,
-						S2S_Gossip_Sending_ServerId:   s.Id,
-						S2S_Gossip_Receiving_ServerId: index,
-						S2S_Gossip_Operations:         operations,
-						S2S_Gossip_Index:              uint64(len(s.MyOperations) - 1),
-					})
+					outGoingRequests = append(outGoingRequests,
+						Message{MessageType: 1,
+							S2S_Gossip_Sending_ServerId:   s.Id,
+							S2S_Gossip_Receiving_ServerId: index,
+							S2S_Gossip_Operations:         operations,
+							S2S_Gossip_Index:              uint64(len(s.MyOperations) - 1),
+						})
+				}
 			}
 			i = i + 1
 		}
@@ -529,7 +528,7 @@ func Start(s *NServer) error {
 
 	go func() error {
 		for {
-			ms := 800
+			ms := 500
 			// rand.IntN(20) + 30
 
 			time.Sleep(time.Duration(ms) * time.Microsecond)
@@ -574,7 +573,7 @@ func Start(s *NServer) error {
 
 				s.mu.Lock()
 
-				// fmt.Println("message: ", m.MessageType)
+				// fmt.Println("message: ", m)
 				// fmt.Println("server: ", s, "\n")
 				if m.MessageType == 0 {
 					_, ok := s.Clients[m.C2S_Client_Id]

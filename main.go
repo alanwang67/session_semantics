@@ -47,16 +47,24 @@ func main() {
 		log.Fatalf("usage: %s [client|server] [id]", os.Args[0])
 	}
 
-	id, err := strconv.ParseUint(os.Args[2], 10, 64)
-	if err != nil {
-		log.Fatalf("can't convert %s to int: %s", os.Args[2], err)
-	}
+	// id, err := strconv.ParseUint(os.Args[2], 10, 64)
+	// if err != nil {
+	// 	log.Fatalf("can't convert %s to int: %s", os.Args[2], err)
+	// }
+
+	session_semantics := make([]uint64, len(clients))
+	session_semantics[0] = 5
+	session_semantics[1] = 5
 
 	switch os.Args[1] {
 	case "client":
-		client.Start(client.New(id, clients[id].Address, 5, clients[id], servers))
+		client.Start(clients, session_semantics, servers)
 	case "server":
-		server.Start(server.New(id, servers[id], servers, clients))
+		id, err := strconv.ParseUint(os.Args[2], 10, 64)
+		if err != nil {
+			log.Fatalf("can't convert %s to int: %s", os.Args[2], err)
+		}
+		server.Start(server.New(id, servers[id], servers))
 	default:
 		log.Fatalf("unknown command: %s", os.Args[1])
 	}
