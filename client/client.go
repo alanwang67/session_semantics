@@ -67,7 +67,6 @@ func Start(clients []*protocol.Connection, sessionSemantic []uint64, servers []*
 		i += 1
 	}
 
-	fmt.Println("We got here")
 	i = uint64(0)
 	for i < uint64(len(NClients)) {
 		j := i
