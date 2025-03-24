@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/gob"
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"sync"
 	"time"
@@ -423,15 +424,22 @@ func handler(s *NServer, request *Message) error {
 				// enc.Encode(&outGoingRequest[index])
 				// c.Close()
 				// fmt.Println(outGoingRequest[index])
-				s.PeerConnection[outGoingRequest[index].S2S_Gossip_Receiving_ServerId].Encode(&outGoingRequest[index])
-				// fmt.Println(err)
+				err := s.PeerConnection[outGoingRequest[index].S2S_Gossip_Receiving_ServerId].Encode(&outGoingRequest[index])
+				if err != nil {
+					fmt.Println(err)
+				}
 			} else if outGoingRequest[index].MessageType == 2 {
 				// enc := gob.NewEncoder(s.PeerAckConnection[outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId])
 				// enc.Encode(&outGoingRequest[index])
-				s.PeerAckConnection[outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId].Encode(&outGoingRequest[index])
-				// c.Close()
+				err := s.PeerAckConnection[outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId].Encode(&outGoingRequest[index])
+				if err != nil {
+					fmt.Println(err)
+				}
 			} else if outGoingRequest[index].MessageType == 4 {
-				s.Clients[outGoingRequest[index].S2C_Client_Number].Encode(&outGoingRequest[index])
+				err := s.Clients[outGoingRequest[index].S2C_Client_Number].Encode(&outGoingRequest[index])
+				if err != nil {
+					fmt.Println(err)
+				}
 			}
 			i++
 		}
@@ -495,8 +503,7 @@ func Start(s *NServer) error {
 
 	go func() error {
 		for {
-			ms := 800
-			// rand.IntN(20) + 30
+			ms := rand.IntN(300) + 500
 
 			time.Sleep(time.Duration(ms) * time.Microsecond)
 
@@ -522,7 +529,7 @@ func Start(s *NServer) error {
 			return nil
 		}
 
-		// fmt.Println(conn.RemoteAddr())
+		fmt.Println(conn.RemoteAddr())
 
 		go func(s *NServer, c net.Conn) error { // make a for loop here, have it wait until the client request, block on recv?
 			dec := gob.NewDecoder(c)
@@ -540,7 +547,7 @@ func Start(s *NServer) error {
 
 				s.mu.Lock()
 
-				fmt.Println("message: ", m)
+				// fmt.Println("message: ", m)
 				// fmt.Println("server: ", s, "\n")
 				if m.MessageType == 0 {
 					_, ok := s.Clients[m.C2S_Client_Id]

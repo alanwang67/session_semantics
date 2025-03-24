@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -42,7 +41,6 @@ func main() {
 			Network: network,
 			Address: address,
 		}
-
 	}
 
 	// if len(os.Args) < 3 {
@@ -54,21 +52,14 @@ func main() {
 	// 	log.Fatalf("can't convert %s to int: %s", os.Args[2], err)
 	// }
 
-	pinnedServers := make([]uint64, len(clients))
-	sessionSemantics := make([]uint64, len(clients))
-	i := uint64(0)
-	for i < uint64(len(clients)) {
-		pinnedServers[i] = uint64(1)
-		sessionSemantics[i] = uint64(5)
-		i += 1
-	}
-
-	fmt.Println(pinnedServers)
-	fmt.Println(sessionSemantics)
+	session_semantics := make([]uint64, len(clients))
+	session_semantics[0] = 5
+	session_semantics[1] = 5
+	// session_semantics[2] = 5
 
 	switch os.Args[1] {
 	case "client":
-		client.Start(clients, pinnedServers, sessionSemantics, servers)
+		client.Start(clients, session_semantics, servers)
 	case "server":
 		id, err := strconv.ParseUint(os.Args[2], 10, 64)
 		if err != nil {
