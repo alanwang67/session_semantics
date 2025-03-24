@@ -446,37 +446,6 @@ func Start(s *NServer) error {
 		fmt.Println(err)
 		return nil
 	}
-	// gob.Register(Message{})
-
-	// send server messages
-	// go func(peerConnection map[uint64]net.Conn) {
-	// 	for {
-	// 		v := <-msg
-	// 		// fmt.Println("We sent a message", v)
-
-	// 		if v.MessageType == 1 {
-	// 			// c, err := net.Dial(s.Peers[v.S2S_Gossip_Receiving_ServerId].Network, s.Peers[v.S2S_Gossip_Receiving_ServerId].Address)
-	// 			// if err != nil {
-	// 			// 	fmt.Print(err)
-	// 			// }
-	// 			c := peerConnection[v.S2S_Gossip_Receiving_ServerId]
-	// 			enc := gob.NewEncoder(c)
-	// 			enc.Encode(&v)
-	// 			// c.Close()
-	// 		}
-	// 		if v.MessageType == 2 {
-	// 			c := peerConnection[v.S2S_Acknowledge_Gossip_Receiving_ServerId]
-	// 			// c, err := net.Dial(s.Peers[v.S2S_Acknowledge_Gossip_Receiving_ServerId].Network, s.Peers[v.S2S_Acknowledge_Gossip_Receiving_ServerId].Address)
-	// 			// if err != nil {
-	// 			// 	fmt.Print(err)
-	// 			// }
-	// 			enc := gob.NewEncoder(c)
-	// 			enc.Encode(&v)
-	// 			// c.Close()
-	// 		}
-	// 		time.Sleep(30 * time.Millisecond)
-	// 	}
-	// }(msgChannel, s.PeerConnection)
 
 	go func() {
 		// will this work from just being in scope?
@@ -495,11 +464,10 @@ func Start(s *NServer) error {
 
 					break
 				}
-				// fmt.Println("Connected with", i)
+				fmt.Println("Connected with conn", i)
 			}
 			i++
 		}
-		// fmt.Print("Done")
 	}()
 
 	go func() {
@@ -519,16 +487,15 @@ func Start(s *NServer) error {
 
 					break
 				}
-				fmt.Println("Connected with", i)
+				fmt.Println("Connected with ack", i)
 			}
 			i++
 		}
-		// fmt.Print("Done")
 	}()
 
 	go func() error {
 		for {
-			ms := 500
+			ms := 800
 			// rand.IntN(20) + 30
 
 			time.Sleep(time.Duration(ms) * time.Microsecond)
@@ -573,7 +540,7 @@ func Start(s *NServer) error {
 
 				s.mu.Lock()
 
-				// fmt.Println("message: ", m)
+				fmt.Println("message: ", m)
 				// fmt.Println("server: ", s, "\n")
 				if m.MessageType == 0 {
 					_, ok := s.Clients[m.C2S_Client_Id]

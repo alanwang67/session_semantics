@@ -57,13 +57,14 @@ func New(id uint64, self *protocol.Connection, sessionSemantic uint64, servers [
 	}
 }
 
-func Start(clients []*protocol.Connection, sessionSemantic []uint64, servers []*protocol.Connection) error {
+// len(servers) is random for pinnedServer
+func Start(clients []*protocol.Connection, pinnedServer []uint64, sessionSemantics []uint64, servers []*protocol.Connection) error {
 	i := uint64(0)
 
 	var NClients = make([]*NClient, len(clients))
 
 	for i < uint64(len(clients)) {
-		NClients[i] = New(i, clients[i], sessionSemantic[i], servers)
+		NClients[i] = New(i, clients[i], sessionSemantics[i], servers)
 		i += 1
 	}
 
@@ -71,10 +72,36 @@ func Start(clients []*protocol.Connection, sessionSemantic []uint64, servers []*
 	for i < uint64(len(NClients)) {
 		j := i
 		go func(c *NClient) error {
+			fmt.Println(c)
+			// make barrier here bc creating threads take time, discard first 10% and last 10%
+			// after the first 10k take time, then at the last 10k take time
+			// sum of requests / time
+			// average latency?
+			// this is just 1 point bash script (number of points should saturate -> 1, 2, 4, 8, 16 ... 512
+			// script that plots this
+			// each experiment runs for at least 1 minute
+			// ycsb benchmark? read - 50, write - 50
+			// primaryback up vs gossip? (self-comparison) necessary
+			// comparison of different semantics with primary-backup
+
+			// primary back up (write to primary, pin client to a backup) 1 primary 2 backups vs gossip first
+			// 50% write 50% read ziffian
+			// go run vs binary?
+			// temux
+
 			start := time.Now()
 			index := uint64(0)
 			for index < uint64(10000) {
 				fmt.Println(index)
+
+				// if index == 2000 {
+				// 	// set the start time here
+				// }
+
+				// if index == {
+				// 	// close the start time here
+				// }
+
 				v := uint64(rand.Int64())
 				serverId := uint64(rand.Uint64() % uint64((len(c.ServerDecoders))))
 				outGoingMessage := handler(c, 1, serverId, v, server.Message{})
@@ -116,7 +143,8 @@ func Start(clients []*protocol.Connection, sessionSemantic []uint64, servers []*
 	}
 
 	// we can add a wait group here when all the threads are done to print
-	fmt.Println("Done")
+
+	// fmt.Println("Done")
 
 	// make sure main thead thread doesn't die before go routines return
 	for {
