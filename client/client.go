@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/alanwang67/session_semantics/protocol"
@@ -27,7 +28,6 @@ type Client struct {
 	WriteVersionVector []uint64
 	ReadVersionVector  []uint64
 	SessionSemantic    uint64
-	// Ack             bool
 }
 
 func New(id uint64, self *protocol.Connection, sessionSemantic uint64, servers []*protocol.Connection) *NClient {
@@ -45,6 +45,8 @@ func New(id uint64, self *protocol.Connection, sessionSemantic uint64, servers [
 		serverEncoders[i] = gob.NewEncoder(c)
 		i += 1
 	}
+	// fmt.Println(serverDecoders)
+	// fmt.Println(serverEncoders)
 
 	return &NClient{
 		Id:                 id,
@@ -57,80 +59,104 @@ func New(id uint64, self *protocol.Connection, sessionSemantic uint64, servers [
 	}
 }
 
-func Start(clients []*protocol.Connection, sessionSemantic []uint64, servers []*protocol.Connection) error {
+func Start(clients []*protocol.Connection, sessionSemantics []uint64, pinnedServer []uint64, servers []*protocol.Connection) error {
 	i := uint64(0)
 
 	var NClients = make([]*NClient, len(clients))
 
 	for i < uint64(len(clients)) {
-		NClients[i] = New(i, clients[i], sessionSemantic[i], servers)
+		NClients[i] = New(i, clients[i], sessionSemantics[i], servers)
 		i += 1
 	}
+	fmt.Println(pinnedServer)
 
+	op := 10000
+	lower_bound := 2000
+	upper_bound := 8000
+	ops := len(clients) * (upper_bound - lower_bound)
+
+	var l sync.Mutex
+
+	total_time := time.Duration(0 * time.Microsecond)
+
+	// create wait group
+	var wg sync.WaitGroup
 	i = uint64(0)
 	for i < uint64(len(NClients)) {
 		j := i
-		go func(c *NClient) error {
-			start := time.Now()
+		wg.Add(1)
+		go func(c *NClient, serverId uint64) error {
 			index := uint64(0)
-			for index < uint64(10000) {
-				fmt.Println(index)
+			defer wg.Done()
+
+			start_time := time.Now()
+			end_time := time.Now()
+
+			for index < uint64(op) {
+				// fmt.Println(index)
+				// serverId = uint64(rand.Uint64() % uint64((len(servers))))
+				// if we pin it performance is actually lower??
+				if index == uint64(lower_bound) {
+					start_time = time.Now()
+				}
+				if index == uint64(upper_bound) {
+					end_time = time.Now()
+				}
+				// fmt.Println(index)
 				v := uint64(rand.Int64())
-				serverId := uint64(rand.Uint64() % uint64((len(c.ServerDecoders))))
-				fmt.Println("0")
 
 				outGoingMessage := handler(c, 1, serverId, v, server.Message{})
-				fmt.Println("1")
 
 				var m server.Message
-
 				err := c.ServerEncoder[serverId].Encode(&outGoingMessage)
 				if err != nil {
 					fmt.Print(err)
 					return err
 				}
-				fmt.Println("2")
 				err = c.ServerDecoders[serverId].Decode(&m)
 				if err != nil {
 					fmt.Print(err)
 					return err
 				}
-				fmt.Println("3")
 				handler(c, 2, 0, 0, m)
 				index++
-				// fmt.Println(j, "we got here")
 			}
-			t := time.Now()
-			fmt.Print(t.Sub(start))
 
-			time.Sleep(1000 * time.Millisecond)
-
-			// put this in a wait group
-			index = uint64(0)
-			for index < uint64(len(c.ServerDecoders)) {
-				outGoingMessage := server.Message{MessageType: 4}
-				err := c.ServerEncoder[index].Encode(&outGoingMessage)
-				if err != nil {
-					fmt.Print(err)
-				}
-				index++
-			}
+			l.Lock()
+			total_time = total_time + (end_time.Sub(start_time))
+			l.Unlock()
+			fmt.Println("total_time: ", j, start_time, end_time, total_time)
 
 			return nil
-		}(NClients[j])
+		}(NClients[j], pinnedServer[j])
 
 		i += 1
 	}
 
+	wg.Wait()
 	// we can add a wait group here when all the threads are done to print
-	// fmt.Println("Done")
 
-	// make sure main thead thread doesn't die before go routines return
-	for {
-		time.Sleep(time.Duration(10) * time.Millisecond)
-		// maybe trace the thread scheduling here
+	// // make sure main thead thread doesn't die before go routines return
+	// for {
+	// 	time.Sleep(time.Duration(10000000000) * time.Millisecond)
+	// }
 
+	time.Sleep(1000000 * time.Millisecond)
+
+	// put this in a wait group
+	index := uint64(0)
+	for index < uint64(len(servers)) {
+		outGoingMessage := server.Message{MessageType: 4}
+		err := NClients[0].ServerEncoder[index].Encode(&outGoingMessage)
+		if err != nil {
+			fmt.Print(err)
+		}
+		index++
 	}
+
+	fmt.Println(ops, total_time)
+	// fmt.Println(ops / int(total_time))
+	return nil
 }
 
 func maxTwoInts(x uint64, y uint64) uint64 {

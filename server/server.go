@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/gob"
 	"fmt"
-	"math/rand/v2"
 	"net"
 	"sync"
 	"time"
@@ -503,7 +502,7 @@ func Start(s *NServer) error {
 
 	go func() error {
 		for {
-			ms := rand.IntN(300) + 500
+			ms := 500
 
 			time.Sleep(time.Duration(ms) * time.Microsecond)
 
@@ -525,11 +524,11 @@ func Start(s *NServer) error {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			fmt.Println(err)
+			// fmt.Println(err)
 			return nil
 		}
 
-		fmt.Println(conn.RemoteAddr())
+		// fmt.Println(conn.RemoteAddr())
 
 		go func(s *NServer, c net.Conn) error { // make a for loop here, have it wait until the client request, block on recv?
 			dec := gob.NewDecoder(c)
@@ -542,6 +541,7 @@ func Start(s *NServer) error {
 				if err != nil {
 					// EOF is coming from here for some reason?
 					fmt.Print(err)
+					c.Close()
 					return err
 				}
 
@@ -550,6 +550,7 @@ func Start(s *NServer) error {
 				// fmt.Println("message: ", m)
 				// fmt.Println("server: ", s, "\n")
 				if m.MessageType == 0 {
+					// we won't be able to run the client again unless they have different client id's because of this
 					_, ok := s.Clients[m.C2S_Client_Id]
 					if !ok {
 						enc := gob.NewEncoder(c)

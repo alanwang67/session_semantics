@@ -52,14 +52,19 @@ func main() {
 	// 	log.Fatalf("can't convert %s to int: %s", os.Args[2], err)
 	// }
 
-	session_semantics := make([]uint64, len(clients))
-	session_semantics[0] = 5
-	session_semantics[1] = 5
-	// session_semantics[2] = 5
+	sessionSemantics := make([]uint64, len(clients))
+	pinnedServer := make([]uint64, len(clients))
+
+	i := uint64(0)
+	for i < uint64(len(clients)) {
+		sessionSemantics[i] = 5
+		pinnedServer[i] = i
+		i++
+	}
 
 	switch os.Args[1] {
 	case "client":
-		client.Start(clients, session_semantics, servers)
+		client.Start(clients, sessionSemantics, pinnedServer, servers)
 	case "server":
 		id, err := strconv.ParseUint(os.Args[2], 10, 64)
 		if err != nil {
