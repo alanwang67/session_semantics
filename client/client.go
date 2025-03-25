@@ -75,14 +75,18 @@ func Start(threads uint64, numberOfOperations uint64, sessionSemantics []uint64,
 
 	total_time := time.Duration(0 * time.Microsecond)
 
-	// create wait group
 	var wg sync.WaitGroup
+	var barrier sync.WaitGroup
+
+	wg.Add(len(NClients))
+	barrier.Add(len(NClients))
 	i = uint64(0)
 	for i < uint64(len(NClients)) {
 		j := i
-		wg.Add(1)
 		go func(c *NClient, serverId uint64) error {
 			index := uint64(0)
+			barrier.Done()
+			barrier.Wait()
 			defer wg.Done()
 
 			start_time := time.Now()
@@ -90,7 +94,7 @@ func Start(threads uint64, numberOfOperations uint64, sessionSemantics []uint64,
 			// latency := time.Duration(0)
 
 			for index < uint64(numberOfOperations) {
-				// serverId = uint64(rand.Uint64() % uint64((len(servers))))
+				serverId = uint64(rand.Uint64() % uint64((len(servers))))
 				// if we pin it performance is actually lower??
 				if index == uint64(lower_bound) {
 					start_time = time.Now()
