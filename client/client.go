@@ -74,6 +74,7 @@ func Start(threads uint64, numberOfOperations uint64, sessionSemantics []uint64,
 	var l sync.Mutex
 
 	total_time := time.Duration(0 * time.Microsecond)
+	total_latency := time.Duration(0 * time.Microsecond)
 
 	var wg sync.WaitGroup
 	var barrier sync.WaitGroup
@@ -91,7 +92,7 @@ func Start(threads uint64, numberOfOperations uint64, sessionSemantics []uint64,
 
 			start_time := time.Now()
 			end_time := time.Now()
-			// latency := time.Duration(0)
+			latency := time.Duration(0)
 
 			for index < uint64(numberOfOperations) {
 				serverId = uint64(rand.Uint64() % uint64((len(servers))))
@@ -109,7 +110,7 @@ func Start(threads uint64, numberOfOperations uint64, sessionSemantics []uint64,
 
 				var m server.Message
 
-				// sent_time := time.Now()
+				sent_time := time.Now()
 				err := c.ServerEncoder[serverId].Encode(&outGoingMessage)
 				if err != nil {
 					fmt.Print(err)
@@ -120,8 +121,7 @@ func Start(threads uint64, numberOfOperations uint64, sessionSemantics []uint64,
 					fmt.Print(err)
 					return err
 				}
-				// received_time := time.Now()
-				// calculate latency
+				latency = latency + (time.Since(sent_time))
 
 				handler(c, 2, 0, 0, m)
 				index++
@@ -129,6 +129,7 @@ func Start(threads uint64, numberOfOperations uint64, sessionSemantics []uint64,
 
 			l.Lock()
 			total_time = total_time + (end_time.Sub(start_time))
+			total_latency = total_latency + latency
 			l.Unlock()
 			fmt.Println("total_time: ", j, start_time, end_time, total_time)
 
@@ -147,6 +148,7 @@ func Start(threads uint64, numberOfOperations uint64, sessionSemantics []uint64,
 	// }
 
 	fmt.Println(ops, total_time, "throughput: ", float64(ops)/total_time.Seconds(), "ops/sec")
+	fmt.Println(ops, total_latency, "latency: ", float64(total_latency.Microseconds())/float64(ops), "microseconds/ops")
 
 	time.Sleep(100 * time.Millisecond)
 
