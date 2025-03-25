@@ -44,9 +44,9 @@ type NServer struct {
 	Id                uint64
 	Self              *protocol.Connection
 	Peers             []*protocol.Connection
-	PeerConnection    map[uint64]*gob.Encoder
-	PeerAckConnection map[uint64]*gob.Encoder
-	Clients           map[uint64]*gob.Encoder
+	PeerConnection    sync.Map // map[uint64]*gob.Encoder
+	PeerAckConnection sync.Map // map[uint64]*gob.Encoder
+	Clients           sync.Map // map[uint64]*gob.Encoder
 
 	UnsatisfiedRequests    []Message
 	VectorClock            []uint64
@@ -74,9 +74,9 @@ func New(id uint64, self *protocol.Connection, peers []*protocol.Connection, gos
 		Id:                     id,
 		Self:                   self,
 		Peers:                  peers,
-		PeerConnection:         make(map[uint64]*gob.Encoder),
-		PeerAckConnection:      make(map[uint64]*gob.Encoder),
-		Clients:                make(map[uint64]*gob.Encoder),
+		PeerConnection:         sync.Map{},
+		PeerAckConnection:      sync.Map{},
+		Clients:                sync.Map{},
 		UnsatisfiedRequests:    make([]Message, 0),
 		VectorClock:            make([]uint64, len(peers)),
 		OperationsPerformed:    make([]Operation, 0),
@@ -425,19 +425,22 @@ func handler(s *NServer, request *Message) error {
 				// enc.Encode(&outGoingRequest[index])
 				// c.Close()
 				// fmt.Println(outGoingRequest[index])
-				err := s.PeerConnection[outGoingRequest[index].S2S_Gossip_Receiving_ServerId].Encode(&outGoingRequest[index])
+				c, _ := s.PeerConnection.Load(outGoingRequest[index].S2S_Gossip_Receiving_ServerId)
+				err := c.(*gob.Encoder).Encode(&outGoingRequest[index])
 				if err != nil {
 					fmt.Println(err)
 				}
 			} else if outGoingRequest[index].MessageType == 2 {
 				// enc := gob.NewEncoder(s.PeerAckConnection[outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId])
 				// enc.Encode(&outGoingRequest[index])
-				err := s.PeerAckConnection[outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId].Encode(&outGoingRequest[index])
+				c, _ := s.PeerAckConnection.Load(outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId)
+				err := c.(*gob.Encoder).Encode(&outGoingRequest[index])
 				if err != nil {
 					fmt.Println(err)
 				}
 			} else if outGoingRequest[index].MessageType == 4 {
-				err := s.Clients[outGoingRequest[index].S2C_Client_Number].Encode(&outGoingRequest[index])
+				c, _ := s.Clients.Load(outGoingRequest[index].S2C_Client_Number)
+				err := c.(*gob.Encoder).Encode(&outGoingRequest[index])
 				if err != nil {
 					fmt.Println(err)
 				}
@@ -468,7 +471,7 @@ func Start(s *NServer) error {
 					}
 					s.mu.Lock()
 					enc := gob.NewEncoder(c)
-					s.PeerConnection[i] = enc
+					s.PeerConnection.Store(i, enc)
 					s.mu.Unlock()
 
 					break
@@ -491,7 +494,7 @@ func Start(s *NServer) error {
 					}
 					s.mu.Lock()
 					enc := gob.NewEncoder(c)
-					s.PeerAckConnection[i] = enc
+					s.PeerAckConnection.Store(i, enc)
 					s.mu.Unlock()
 
 					break
@@ -553,10 +556,10 @@ func Start(s *NServer) error {
 				// fmt.Println("server: ", s, "\n")
 				if m.MessageType == 0 {
 					// we won't be able to run the client again unless they have different client id's because of this
-					_, ok := s.Clients[m.C2S_Client_Id]
+					_, ok := s.Clients.Load(m.C2S_Client_Id)
 					if !ok {
 						enc := gob.NewEncoder(c)
-						s.Clients[m.C2S_Client_Id] = enc
+						s.Clients.Store(m.C2S_Client_Id, enc)
 					}
 				}
 
