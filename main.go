@@ -30,47 +30,52 @@ func main() {
 		}
 	}
 
-	clients := make([]*protocol.Connection, len(data["clients"].([]interface{})))
-	for i, s := range data["clients"].([]interface{}) {
-		conn, _ := s.(map[string]interface{})
-
-		network, _ := conn["network"].(string)
-		address, _ := conn["address"].(string)
-
-		clients[i] = &protocol.Connection{
-			Network: network,
-			Address: address,
-		}
-	}
-
-	// if len(os.Args) < 3 {
-	// 	log.Fatalf("usage: %s [client|server] [id]", os.Args[0])
-	// }
-
-	// id, err := strconv.ParseUint(os.Args[2], 10, 64)
-	// if err != nil {
-	// 	log.Fatalf("can't convert %s to int: %s", os.Args[2], err)
-	// }
-
-	sessionSemantics := make([]uint64, len(clients))
-	pinnedServer := make([]uint64, len(clients))
-
-	i := uint64(0)
-	for i < uint64(len(clients)) {
-		sessionSemantics[i] = 5
-		pinnedServer[i] = i
-		i++
-	}
-
 	switch os.Args[1] {
 	case "client":
-		client.Start(clients, sessionSemantics, pinnedServer, servers)
-	case "server":
-		id, err := strconv.ParseUint(os.Args[2], 10, 64)
+		if len(os.Args) < 4 {
+			log.Fatalf("usage: go run main.go client [threads] [operations]")
+			return
+		}
+
+		threads, err := strconv.ParseUint(os.Args[2], 10, 64)
 		if err != nil {
 			log.Fatalf("can't convert %s to int: %s", os.Args[2], err)
 		}
-		server.Start(server.New(id, servers[id], servers))
+
+		numberOfOperations, err := strconv.ParseUint(os.Args[3], 10, 64)
+		if err != nil {
+			log.Fatalf("can't convert %s to int: %s", os.Args[3], err)
+		}
+
+		sessionSemantics := make([]uint64, threads)
+		pinnedServer := make([]uint64, threads)
+
+		i := uint64(0)
+		for i < uint64(threads) {
+			sessionSemantics[i] = 5
+			pinnedServer[i] = 0
+			i++
+		}
+
+		client.Start(threads, numberOfOperations, sessionSemantics, pinnedServer, servers)
+	case "server":
+		if len(os.Args) < 4 {
+			log.Fatalf("usage: go run main.go server [id] [gossip_interval]")
+		}
+
+		id, err := strconv.ParseUint(os.Args[2], 10, 64)
+
+		if err != nil {
+			log.Fatalf("can't convert %s to int: %s", os.Args[2], err)
+		}
+
+		gossipInterval, err := strconv.ParseUint(os.Args[3], 10, 64)
+
+		if err != nil {
+			log.Fatalf("can't convert %s to int: %s", os.Args[3], err)
+		}
+
+		server.Start(server.New(id, servers[id], servers, gossipInterval))
 	default:
 		log.Fatalf("unknown command: %s", os.Args[1])
 	}

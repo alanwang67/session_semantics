@@ -54,6 +54,7 @@ type NServer struct {
 	MyOperations           []Operation
 	PendingOperations      []Operation
 	GossipAcknowledgements []uint64
+	GossipInterval         uint64
 	mu                     sync.Mutex
 }
 
@@ -68,7 +69,7 @@ type Server struct {
 	GossipAcknowledgements []uint64
 }
 
-func New(id uint64, self *protocol.Connection, peers []*protocol.Connection) *NServer {
+func New(id uint64, self *protocol.Connection, peers []*protocol.Connection, gossipInterval uint64) *NServer {
 	server := &NServer{
 		Id:                     id,
 		Self:                   self,
@@ -82,6 +83,7 @@ func New(id uint64, self *protocol.Connection, peers []*protocol.Connection) *NS
 		MyOperations:           make([]Operation, 0),
 		PendingOperations:      make([]Operation, 0),
 		GossipAcknowledgements: make([]uint64, len(peers)),
+		GossipInterval:         gossipInterval,
 	}
 
 	return server
@@ -381,7 +383,7 @@ func processRequest(server Server, request Message) (Server, []Message) {
 							S2S_Gossip_Sending_ServerId:   s.Id,
 							S2S_Gossip_Receiving_ServerId: index,
 							S2S_Gossip_Operations:         operations,
-							S2S_Gossip_Index:              uint64(len(s.MyOperations) - 1),
+							S2S_Gossip_Index:              uint64(len(s.MyOperations)),
 						})
 				}
 			}
@@ -502,7 +504,7 @@ func Start(s *NServer) error {
 
 	go func() error {
 		for {
-			ms := 500
+			ms := s.GossipInterval
 
 			time.Sleep(time.Duration(ms) * time.Microsecond)
 

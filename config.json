@@ -15,19 +15,5 @@
         "network": "tcp",
         "address": "127.0.0.1:10002"
       }
-    ],
-    "clients": [
-      {
-        "id": 0,
-        "servers": [10, 11, 12],
-        "network": "tcp",
-        "address": "127.0.0.1:10003"
-      },
-      {
-        "id": 1,
-        "servers": [10, 11, 12],
-        "network": "tcp",
-        "address": "127.0.0.1:10004"
-      }
     ]
   }

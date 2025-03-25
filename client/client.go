@@ -14,7 +14,6 @@ import (
 
 type NClient struct {
 	Id                 uint64
-	Self               *protocol.Connection
 	ServerDecoders     []*gob.Decoder
 	ServerEncoder      []*gob.Encoder
 	WriteVersionVector []uint64
@@ -30,7 +29,7 @@ type Client struct {
 	SessionSemantic    uint64
 }
 
-func New(id uint64, self *protocol.Connection, sessionSemantic uint64, servers []*protocol.Connection) *NClient {
+func New(id uint64, sessionSemantic uint64, servers []*protocol.Connection) *NClient {
 	i := uint64(0)
 	serverDecoders := make([]*gob.Decoder, len(servers))
 	serverEncoders := make([]*gob.Encoder, len(servers))
@@ -50,7 +49,6 @@ func New(id uint64, self *protocol.Connection, sessionSemantic uint64, servers [
 
 	return &NClient{
 		Id:                 id,
-		Self:               self,
 		ServerDecoders:     serverDecoders,
 		ServerEncoder:      serverEncoders,
 		WriteVersionVector: make([]uint64, len(servers)),
@@ -59,21 +57,19 @@ func New(id uint64, self *protocol.Connection, sessionSemantic uint64, servers [
 	}
 }
 
-func Start(clients []*protocol.Connection, sessionSemantics []uint64, pinnedServer []uint64, servers []*protocol.Connection) error {
+func Start(threads uint64, numberOfOperations uint64, sessionSemantics []uint64, pinnedServer []uint64, servers []*protocol.Connection) error {
 	i := uint64(0)
 
-	var NClients = make([]*NClient, len(clients))
+	var NClients = make([]*NClient, threads)
 
-	for i < uint64(len(clients)) {
-		NClients[i] = New(i, clients[i], sessionSemantics[i], servers)
+	for i < uint64(threads) {
+		NClients[i] = New(i, sessionSemantics[i], servers)
 		i += 1
 	}
-	fmt.Println(pinnedServer)
+	lower_bound := uint64(float64(numberOfOperations) * .2)
+	upper_bound := uint64(float64(numberOfOperations) * .8)
 
-	op := 10000
-	lower_bound := 2000
-	upper_bound := 8000
-	ops := len(clients) * (upper_bound - lower_bound)
+	ops := threads * uint64(upper_bound-lower_bound)
 
 	var l sync.Mutex
 
@@ -91,9 +87,9 @@ func Start(clients []*protocol.Connection, sessionSemantics []uint64, pinnedServ
 
 			start_time := time.Now()
 			end_time := time.Now()
+			// latency := time.Duration(0)
 
-			for index < uint64(op) {
-				// fmt.Println(index)
+			for index < uint64(numberOfOperations) {
 				// serverId = uint64(rand.Uint64() % uint64((len(servers))))
 				// if we pin it performance is actually lower??
 				if index == uint64(lower_bound) {
@@ -108,6 +104,8 @@ func Start(clients []*protocol.Connection, sessionSemantics []uint64, pinnedServ
 				outGoingMessage := handler(c, 1, serverId, v, server.Message{})
 
 				var m server.Message
+
+				// sent_time := time.Now()
 				err := c.ServerEncoder[serverId].Encode(&outGoingMessage)
 				if err != nil {
 					fmt.Print(err)
@@ -118,6 +116,9 @@ func Start(clients []*protocol.Connection, sessionSemantics []uint64, pinnedServ
 					fmt.Print(err)
 					return err
 				}
+				// received_time := time.Now()
+				// calculate latency
+
 				handler(c, 2, 0, 0, m)
 				index++
 			}
@@ -141,7 +142,9 @@ func Start(clients []*protocol.Connection, sessionSemantics []uint64, pinnedServ
 	// 	time.Sleep(time.Duration(10000000000) * time.Millisecond)
 	// }
 
-	time.Sleep(1000000 * time.Millisecond)
+	fmt.Println(ops, total_time, "throughput: ", float64(ops)/total_time.Seconds(), "ops/sec")
+
+	time.Sleep(100 * time.Millisecond)
 
 	// put this in a wait group
 	index := uint64(0)
@@ -154,7 +157,6 @@ func Start(clients []*protocol.Connection, sessionSemantics []uint64, pinnedServ
 		index++
 	}
 
-	fmt.Println(ops, total_time)
 	// fmt.Println(ops / int(total_time))
 	return nil
 }
