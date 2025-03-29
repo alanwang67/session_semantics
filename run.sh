@@ -42,31 +42,35 @@ run_command_right() {
 
 
 SES="experiment"               # session name
-DIR="/Users/alanwang/Desktop/session_semantics"   # base project directory
+DIR="/home/alanwang/session_semantics/"   # base project directory
 
 create_session $SES $DIR       # create detached session
 new_window $SES 1 $DIR
 new_window $SES 2 $DIR
 new_window $SES 3 $DIR
-#new_window_horiz_split $SES 2 ${DIR}/src
+# new_window_horiz_split $SES 2 ${DIR}/src
 
 # Builtin flags in the above commands for the following actions
 # don't seem to work when run multiple times inside a bash script,
 # seemingly due to a race condition. Give them some time to finish.
+
 sleep 0.1
 
-name_window $SES 0 server0
-run_command $SES 0 "go run main.go server 0 500"
+# detatch-client
+# ssh srg02 -t "go run main.go server 1 $2"
+
+name_window $SES 0 server0 
+run_command $SES 0 "ssh srg02 'cd session_semantics; go run main.go server 0 500'"
 
 name_window $SES 1 server1
-run_command $SES 1 "go run main.go server 1 500"
+run_command $SES 1 "ssh srg03 'cd session_semantics; go run main.go server 1 500'"
 
 name_window $SES 2 server2
-run_command $SES 2 "go run main.go server 2 500"
+run_command $SES 2 "ssh srg04 'cd session_semantics; go run main.go server 2 500'"
 
 sleep 1
 
 name_window $SES 3 client
-run_command $SES 3 "go run main.go client 8 1000"
+run_command $SES 3 "ssh srg05 -t 'cd session_semantics; go run main.go client 128 500'"
 
 attach_session $SES
