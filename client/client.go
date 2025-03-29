@@ -73,7 +73,7 @@ func Start(threads uint64, numberOfOperations uint64, sessionSemantics []uint64,
 
 	var l sync.Mutex
 
-	total_time := time.Duration(0 * time.Microsecond)
+	avg_throughput := float64(0)
 	total_latency := time.Duration(0 * time.Microsecond)
 
 	var wg sync.WaitGroup
@@ -128,10 +128,9 @@ func Start(threads uint64, numberOfOperations uint64, sessionSemantics []uint64,
 			}
 
 			l.Lock()
-			total_time = total_time + (end_time.Sub(start_time))
+			avg_throughput = avg_throughput + float64((upper_bound)-(lower_bound))/(end_time.Sub(start_time).Seconds())
 			total_latency = total_latency + latency
 			l.Unlock()
-			fmt.Println("total_time: ", j, start_time, end_time, total_time)
 
 			return nil
 		}(NClients[j], pinnedServer[j])
@@ -147,7 +146,7 @@ func Start(threads uint64, numberOfOperations uint64, sessionSemantics []uint64,
 	// 	time.Sleep(time.Duration(10000000000) * time.Millisecond)
 	// }
 
-	fmt.Println(ops, total_time, "throughput: ", float64(ops)/total_time.Seconds(), "ops/sec")
+	fmt.Println(ops, "throughput: ", avg_throughput, "ops/sec")
 	fmt.Println(ops, total_latency, "latency: ", float64(total_latency.Microseconds())/float64(ops), "microseconds/ops")
 
 	time.Sleep(100 * time.Millisecond)
