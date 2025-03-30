@@ -44,6 +44,7 @@ run_command_right() {
 SES="experiment"               # session name
 DIR="/home/alanwang/session_semantics/"   # base project directory
 
+workdone=0
 for i in {1..5}
 do
 
@@ -76,7 +77,7 @@ run_command $SES 3 "ssh srg05"
 
 sleep 1 
 
-run_command $SES 0 "cd session_semantics; go run main.go server 0 500; ps"
+run_command $SES 0 "cd session_semantics; go run main.go server 0 500"
 
 pid1=$!
 
@@ -90,10 +91,18 @@ pid3=$!
 
 sleep 1
 
+# make session env here!! 
 name_window $SES 3 client
-run_command $SES 3 "cd session_semantics; go run main.go client $(( $1 * $i * 2 )) $2 | tee $i"
+run_command $SES 3 "cd session_semantics; go run main.go client $(( $1 * $i * 2 )) $2 | tee $i; workdone=1"
 
-sleep 100
+while [ "$workdone" -eq 0 ]; do
+    sleep 5
+    echo $workdone
+done
+
+workdone=0
+
+echo here
 
 #run_command $SES 0 "kill -9 $pid1"
 #run_command $SES 0 "kill -9 $pid2"
