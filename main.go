@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"math/rand/v2"
 	"os"
 	"strconv"
 
@@ -47,17 +48,32 @@ func main() {
 			log.Fatalf("can't convert %s to int: %s", os.Args[3], err)
 		}
 
-		sessionSemantics := make([]uint64, threads)
-		pinnedServer := make([]uint64, threads)
-
+		workload := make([][]uint64, threads)
 		i := uint64(0)
+		for i < uint64(len(workload)) {
+			j := 0
+			tmp := make([]uint64, numberOfOperations)
+			for j < int(numberOfOperations) {
+				tmp[j] = uint64(1)
+				j += 1
+			}
+			workload[i] = tmp
+			i += 1
+		}
+
+		sessionSemantics := make([]uint64, threads)
+		writeServer := make([]uint64, threads)
+		readServer := make([]uint64, threads)
+
+		i = uint64(0)
 		for i < uint64(threads) {
 			sessionSemantics[i] = 5
-			pinnedServer[i] = 0
+			writeServer[i] = uint64(rand.Uint64() % uint64((len(servers))))
+			readServer[i] = uint64(rand.Uint64() % uint64((len(servers))))
 			i++
 		}
 
-		client.Start(threads, numberOfOperations, sessionSemantics, pinnedServer, servers)
+		client.Start(threads, sessionSemantics, workload, writeServer, readServer, servers)
 	case "server":
 		if len(os.Args) < 4 {
 			log.Fatalf("usage: go run main.go server [id] [gossip_interval]")
