@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# put session info, pinned servers, server gossip interval, threads, operations 
+# gossiip vs primary backup config
+# allow for fine grained info such as reading from one server and writing from one server in client file 
+
 create_session() {
     tmux new-session -d -s ${1} -c ${2}
 }
@@ -44,8 +48,7 @@ run_command_right() {
 SES="experiment"               # session name
 DIR="/home/alanwang/session_semantics/"   # base project directory
 
-workdone=0
-for i in {1..5}
+for i in {1..10}
 do
 
 create_session $SES $DIR       # create detached session
@@ -79,40 +82,25 @@ sleep 1
 
 run_command $SES 0 "cd session_semantics; go run main.go server 0 500"
 
-pid1=$!
-
 run_command $SES 1 "cd session_semantics; go run main.go server 1 500"
-
-pid2=$!
 
 run_command $SES 2 "cd session_semantics; go run main.go server 2 500"
 
-pid3=$!
+sleep 2
 
-sleep 1
+# concatenate a string here and put all the files under this place
 
-# make session env here!! 
 name_window $SES 3 client
-run_command $SES 3 "cd session_semantics; go run main.go client $(( $1 * $i * 2 )) $2 | tee $i; workdone=1"
+run_command $SES 3 "cd session_semantics; go run main.go client $(( $1 * $i * 2 )) $2 > $i ; tmux wait-for -S sig"
 
-while [ "$workdone" -eq 0 ]; do
+while [ ! -f ./$i ]; do
     sleep 5
-    echo $workdone
 done
 
-workdone=0
-
-echo here
-
-#run_command $SES 0 "kill -9 $pid1"
-#run_command $SES 0 "kill -9 $pid2"
-#run_command $SES 0 "kill -9 $pid3"
-# tmux wait 3
-
+sleep 5 
 # the main issue here is we have to wait for $SES to finish
 # maybe just use a different port number?
 tmux kill-session
-
 done
 
-# attach_session $SES
+#attach_session $SES
