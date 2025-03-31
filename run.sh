@@ -44,6 +44,9 @@ run_command_right() {
 SES="experiment"               # session name
 DIR="/home/alanwang/session_semantics/"   # base project directory
 
+for i in {1..5}
+do
+
 create_session $SES $DIR       # create detached session
 new_window $SES 1 $DIR
 new_window $SES 2 $DIR
@@ -60,17 +63,47 @@ sleep 0.1
 # ssh srg02 -t "go run main.go server 1 $2"
 
 name_window $SES 0 server0 
-run_command $SES 0 "ssh srg02 'cd session_semantics; go run main.go server 0 500'"
+run_command $SES 0 "ssh srg02"
 
 name_window $SES 1 server1
-run_command $SES 1 "ssh srg03 'cd session_semantics; go run main.go server 1 500'"
+run_command $SES 1 "ssh srg03"
 
 name_window $SES 2 server2
-run_command $SES 2 "ssh srg04 'cd session_semantics; go run main.go server 2 500'"
+run_command $SES 2 "ssh srg04"
+
+name_window $SES 3 client
+run_command $SES 3 "ssh srg05"
+
+sleep 1 
+
+run_command $SES 0 "cd session_semantics; go run main.go server 0 500; ps"
+
+pid1=$!
+
+run_command $SES 1 "cd session_semantics; go run main.go server 1 500"
+
+pid2=$!
+
+run_command $SES 2 "cd session_semantics; go run main.go server 2 500"
+
+pid3=$!
 
 sleep 1
 
 name_window $SES 3 client
-run_command $SES 3 "ssh srg05 -t 'cd session_semantics; go run main.go client 128 500'"
+run_command $SES 3 "cd session_semantics; go run main.go client $(( $1 * $i * 2 )) $2 | tee $i"
 
-attach_session $SES
+sleep 100
+
+#run_command $SES 0 "kill -9 $pid1"
+#run_command $SES 0 "kill -9 $pid2"
+#run_command $SES 0 "kill -9 $pid3"
+# tmux wait 3
+
+# the main issue here is we have to wait for $SES to finish
+# maybe just use a different port number?
+tmux kill-session
+
+done
+
+# attach_session $SES
