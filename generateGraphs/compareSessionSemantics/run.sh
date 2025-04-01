@@ -75,8 +75,6 @@ run_command $SES 2 "cd session_semantics"
 
 sleep 5
 
-attach_session $SES
-
 for session in {0..5}
 do
 cd ~/session_semantics/generateGraphs/compareSessionSemantics
