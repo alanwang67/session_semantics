@@ -56,7 +56,6 @@ func New(id uint64, sessionSemantic uint64, servers []*protocol.Connection) *NCl
 }
 
 func Start(threads uint64, sessionSemantics []uint64, workload [][]uint64, pinnedWriteServer []uint64, pinnedReadServer []uint64, servers []*protocol.Connection) error {
-        fmt.Println(sessionSemantics)
 	i := uint64(0)
 
 	var NClients = make([]*NClient, threads)
@@ -103,7 +102,7 @@ func Start(threads uint64, sessionSemantics []uint64, workload [][]uint64, pinne
 				} else {
 					serverId = writeServer
 				}
-				// serverId = uint64(rand.Uint64() % uint64((len(servers))))
+				serverId = uint64(rand.Uint64() % uint64((len(servers))))
 
 				if index == uint64(lower_bound) {
 					start_time = time.Now()

@@ -48,12 +48,6 @@ run_command_right() {
 SES="experiment"               # session name
 DIR="/home/alanwang/session_semantics/"   # base project directory
 
-for session in {0..5}
-do
-mkdir $session    
-for i in {1..5}
-do
-
 create_session $SES $DIR       # create detached session
 new_window $SES 1 $DIR
 new_window $SES 2 $DIR
@@ -66,9 +60,6 @@ new_window $SES 3 $DIR
 
 sleep 0.1
 
-# detatch-client
-# ssh srg02 -t "go run main.go server 1 $2"
-
 name_window $SES 0 server0 
 run_command $SES 0 "ssh srg02"
 
@@ -78,32 +69,38 @@ run_command $SES 1 "ssh srg03"
 name_window $SES 2 server2
 run_command $SES 2 "ssh srg04"
 
-name_window $SES 3 client
-run_command $SES 3 "ssh srg05"
+run_command $SES 0 "cd session_semantics"
+run_command $SES 1 "cd session_semantics"
+run_command $SES 2 "cd session_semantics"
 
 sleep 5
 
-run_command $SES 0 "cd session_semantics; go run main.go server 0 500"
+attach_session $SES
 
-run_command $SES 1 "cd session_semantics; go run main.go server 1 500"
+for session in {0..5}
+do
+cd ~/session_semantics/generateGraphs/compareSessionSemantics
+mkdir $session    
+for i in {1..5}
+do
 
-run_command $SES 2 "cd session_semantics; go run main.go server 2 500"
+run_command $SES 0 "go run main.go server 0 500"
+
+run_command $SES 1 "go run main.go server 1 500"
+
+run_command $SES 2 "go run main.go server 2 500"
 
 sleep 2
 
-# concatenate a string here and put all the files under this place
+cd ~/session_semantics; go run main.go client $(( $1 * $i * 2 )) $2 $session > ./generateGraphs/compareSessionSemantics/$session/$i
 
-name_window $SES 3 client
-run_command $SES 3 "cd session_semantics; go run main.go client $(( $1 * $i * 2 )) $2 $session > ./generateGraphs/compareSessionSemantics/$session/$i"
+echo 'finished'
 
-while [ ! -f ./$session/$i ]; do
-    sleep 5
-done
+#sleep 2
+tmux send-keys -t server0 C-c
+tmux send-keys -t server1 C-c
+tmux send-keys -t server2 C-c
 
-sleep 10
-# the main issue here is we have to wait for $SES to finish
-# maybe just use a different port number?
-tmux kill-session
 done
 done
 #attach_session $SES

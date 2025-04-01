@@ -6,7 +6,6 @@ import (
 	"math/rand/v2"
 	"os"
 	"strconv"
-	"fmt"
 
 	"github.com/alanwang67/session_semantics/client"
 	"github.com/alanwang67/session_semantics/protocol"
@@ -79,7 +78,6 @@ func main() {
 			readServer[i] = uint64(rand.Uint64() % uint64((len(servers))))
 			i++
 		}
-		fmt.Println(sessionSemantics)
 		client.Start(threads, sessionSemantics, workload, writeServer, writeServer, servers)
 	case "server":
 		if len(os.Args) < 4 {
