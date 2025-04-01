@@ -6,6 +6,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"strconv"
+	"fmt"
 
 	"github.com/alanwang67/session_semantics/client"
 	"github.com/alanwang67/session_semantics/protocol"
@@ -33,8 +34,8 @@ func main() {
 
 	switch os.Args[1] {
 	case "client":
-		if len(os.Args) < 4 {
-			log.Fatalf("usage: go run main.go client [threads] [operations]")
+		if len(os.Args) < 5 {
+			log.Fatalf("usage: go run main.go client [threads] [numberOfOperations] [sessionSemantic]")
 			return
 		}
 
@@ -44,6 +45,11 @@ func main() {
 		}
 
 		numberOfOperations, err := strconv.ParseUint(os.Args[3], 10, 64)
+		if err != nil {
+			log.Fatalf("can't convert %s to int: %s", os.Args[3], err)
+		}
+		
+		sessionSemantic, err := strconv.ParseUint(os.Args[4], 10, 64)
 		if err != nil {
 			log.Fatalf("can't convert %s to int: %s", os.Args[3], err)
 		}
@@ -67,13 +73,14 @@ func main() {
 
 		i = uint64(0)
 		for i < uint64(threads) {
-			sessionSemantics[i] = 5
-			writeServer[i] = uint64(rand.Uint64() % uint64((len(servers))))
+			sessionSemantics[i] = sessionSemantic
+			writeServer[i] = 0
+			//uint64(rand.Uint64() % uint64((len(servers))))
 			readServer[i] = uint64(rand.Uint64() % uint64((len(servers))))
 			i++
 		}
-
-		client.Start(threads, sessionSemantics, workload, writeServer, readServer, servers)
+		fmt.Println(sessionSemantics)
+		client.Start(threads, sessionSemantics, workload, writeServer, writeServer, servers)
 	case "server":
 		if len(os.Args) < 4 {
 			log.Fatalf("usage: go run main.go server [id] [gossip_interval]")

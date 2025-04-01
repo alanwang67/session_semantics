@@ -56,6 +56,7 @@ func New(id uint64, sessionSemantic uint64, servers []*protocol.Connection) *NCl
 }
 
 func Start(threads uint64, sessionSemantics []uint64, workload [][]uint64, pinnedWriteServer []uint64, pinnedReadServer []uint64, servers []*protocol.Connection) error {
+        fmt.Println(sessionSemantics)
 	i := uint64(0)
 
 	var NClients = make([]*NClient, threads)
@@ -72,7 +73,9 @@ func Start(threads uint64, sessionSemantics []uint64, workload [][]uint64, pinne
 
 	var l sync.Mutex
 
-	avg_throughput := float64(0)
+	set := false
+	avg_time := float64(0)
+	// avg_throughput := float64(0)
 	total_latency := time.Duration(0 * time.Microsecond)
 
 	var wg sync.WaitGroup
@@ -133,9 +136,14 @@ func Start(threads uint64, sessionSemantics []uint64, workload [][]uint64, pinne
 			}
 
 			l.Lock()
-			avg_throughput = avg_throughput + float64((upper_bound)-(lower_bound))/(end_time.Sub(start_time).Seconds())
-			fmt.Println(end_time.Sub(start_time).Seconds())
+			if !set {
+			   avg_time = (end_time.Sub(start_time).Seconds())
+			   set = true
+			} else {
+			  avg_time = (avg_time + (end_time.Sub(start_time).Seconds())) / 2
+			}
 			total_latency = total_latency + latency
+			//fmt.Println(end_time.Sub(start_time).Seconds())
 			l.Unlock()
 			return nil
 		}(NClients[j], workload[j], pinnedWriteServer[j], pinnedReadServer[j])
@@ -144,15 +152,9 @@ func Start(threads uint64, sessionSemantics []uint64, workload [][]uint64, pinne
 	}
 
 	wg.Wait()
-	// we can add a wait group here when all the threads are done to print
 
-	// // make sure main thead thread doesn't die before go routines return
-	// for {
-	// 	time.Sleep(time.Duration(10000000000) * time.Millisecond)
-	// }
-
-	fmt.Println("throughput: ", avg_throughput, " ops/sec")
-	fmt.Println(total_latency, "latency: ", float64(total_latency.Milliseconds())/float64(ops), " ms")
+	fmt.Println("throughput:", int(float64(ops) / (avg_time)), "ops/sec")
+	fmt.Println("latency:", int(float64(total_latency.Microseconds())/float64(ops)), "us")
 
 	time.Sleep(100 * time.Millisecond)
 

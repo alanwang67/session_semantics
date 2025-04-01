@@ -48,7 +48,10 @@ run_command_right() {
 SES="experiment"               # session name
 DIR="/home/alanwang/session_semantics/"   # base project directory
 
-for i in {1..10}
+for session in {0..5}
+do
+mkdir $session    
+for i in {1..5}
 do
 
 create_session $SES $DIR       # create detached session
@@ -91,16 +94,16 @@ sleep 2
 # concatenate a string here and put all the files under this place
 
 name_window $SES 3 client
-run_command $SES 3 "cd session_semantics; go run main.go client $(( $1 * $i * 2 )) $2 >> $i"
+run_command $SES 3 "cd session_semantics; go run main.go client $(( $1 * $i * 2 )) $2 $session > ./generateGraphs/compareSessionSemantics/$session/$i"
 
-while [ ! -f ./$i ]; do
+while [ ! -f ./$session/$i ]; do
     sleep 5
 done
 
-sleep 20
+sleep 10
 # the main issue here is we have to wait for $SES to finish
 # maybe just use a different port number?
 tmux kill-session
 done
-
+done
 #attach_session $SES
