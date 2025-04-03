@@ -87,13 +87,13 @@ else
         mkdir $session    
         for i in {1..5}
         do
-            run_command $SES 0 "./main server 0 500"
+            run_command $SES 0 "./main $ct server 0 500"
 
-            run_command $SES 1 "./main server 1 500"
+            run_command $SES 1 "./main $ct server 1 500"
 
-            run_command $SES 2 "./main server 2 500"
+            run_command $SES 2 "./main $ct server 2 500"
 
-            sleep 5
+            sleep 20
 
             cd ~/session_semantics; go run main.go $ct client $(( $1 * $i * 2 )) $2 $session true [] [] > ./generateGraphs/compareSessionSemantics/$session/$i
 
