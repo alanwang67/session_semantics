@@ -5,14 +5,23 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/alanwang67/session_semantics/client"
 	"github.com/alanwang67/session_semantics/protocol"
 	"github.com/alanwang67/session_semantics/server"
 )
 
+func processAddressString(address string, n uint64) string {
+	l := strings.Split(address, `:`)
+	i, _ := strconv.ParseUint(l[1], 10, 64)
+	return l[0] + ":" + (strconv.Itoa(int(i + n)))
+}
+
 func main() {
 	config, _ := os.ReadFile("config.json")
+
+	portOffSet, _ := strconv.ParseUint(os.Args[1], 10, 64)
 
 	var data map[string]interface{}
 	json.Unmarshal(config, &data)
@@ -26,22 +35,22 @@ func main() {
 
 		servers[i] = &protocol.Connection{
 			Network: network,
-			Address: address,
+			Address: processAddressString(address, portOffSet),
 		}
 	}
 
-	switch os.Args[1] {
+	switch os.Args[2] {
 	case "client":
 		// first arugment is path to program
-		if len(os.Args) < 5 {
-			log.Fatalf("usage: go run main.go client [threads] [numberOfOperations] [sessionSemantic] [randomServer] [writeServers] [readServers]")
+		if len(os.Args) < 8 {
+			log.Fatalf("usage: go run main.go _ client [threads] [numberOfOperations] [sessionSemantic] [randomServer] [writeServers] [readServers]")
 			return
 		}
 
-		threads, _ := strconv.ParseUint(os.Args[2], 10, 64)
-		numberOfOperations, _ := strconv.ParseUint(os.Args[3], 10, 64)
-		sessionSemantic, _ := strconv.ParseUint(os.Args[4], 10, 64)
-		randomServer, _ := strconv.ParseBool(os.Args[5])
+		threads, _ := strconv.ParseUint(os.Args[3], 10, 64)
+		numberOfOperations, _ := strconv.ParseUint(os.Args[4], 10, 64)
+		sessionSemantic, _ := strconv.ParseUint(os.Args[5], 10, 64)
+		randomServer, _ := strconv.ParseBool(os.Args[6])
 
 		workload := make([]uint64, numberOfOperations)
 		i := uint64(0)
@@ -73,20 +82,12 @@ func main() {
 		client.Start(conf, servers)
 	case "server":
 		if len(os.Args) < 4 {
-			log.Fatalf("usage: go run main.go server [id] [gossip_interval]")
+			log.Fatalf("usage: go run main.go _ server [id] [gossip_interval]")
 		}
 
-		id, err := strconv.ParseUint(os.Args[2], 10, 64)
+		id, _ := strconv.ParseUint(os.Args[3], 10, 64)
 
-		if err != nil {
-			log.Fatalf("can't convert %s to int: %s", os.Args[2], err)
-		}
-
-		gossipInterval, err := strconv.ParseUint(os.Args[3], 10, 64)
-
-		if err != nil {
-			log.Fatalf("can't convert %s to int: %s", os.Args[3], err)
-		}
+		gossipInterval, _ := strconv.ParseUint(os.Args[4], 10, 64)
 
 		server.Start(server.New(id, servers[id], servers, gossipInterval))
 	default:

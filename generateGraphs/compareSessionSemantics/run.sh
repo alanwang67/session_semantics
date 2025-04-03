@@ -43,6 +43,7 @@ run_command_right() {
 if [[ $* == *-help* ]]; then 
     echo Provide: initialThreads numberOfOperations 
 else 
+    ct=0
     tmux kill-session -t experiment 
     
     cd ~/session_semantics
@@ -94,8 +95,9 @@ else
 
             sleep 5
 
-            cd ~/session_semantics; go run main.go client $(( $1 * $i * 2 )) $2 $session true [] [] > ./generateGraphs/compareSessionSemantics/$session/$i
+            cd ~/session_semantics; go run main.go $ct client $(( $1 * $i * 2 )) $2 $session true [] [] > ./generateGraphs/compareSessionSemantics/$session/$i
 
+            ct=$(($ct + 1))
             echo 'finished'
 
             tmux send-keys -t server0 C-c
