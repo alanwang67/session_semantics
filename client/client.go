@@ -12,6 +12,18 @@ import (
 	"github.com/alanwang67/session_semantics/server"
 )
 
+// to pin a server choose the same one element array for both readServer and writeServer
+// every thread has the same read and write servers
+type ConfigurationInfo struct {
+	Threads            uint64
+	NumberOfOperations uint64
+	SessionSemantic    uint64
+	Workload           []uint64
+	RandomServer       bool
+	WriteServer        []uint64 // determines which servers we can write to
+	ReadServer         []uint64 // determines which servers we can read from
+}
+
 type NClient struct {
 	Id                 uint64
 	ServerDecoders     []*gob.Decoder
@@ -55,26 +67,25 @@ func New(id uint64, sessionSemantic uint64, servers []*protocol.Connection) *NCl
 	}
 }
 
-func Start(threads uint64, sessionSemantics []uint64, workload [][]uint64, pinnedWriteServer []uint64, pinnedReadServer []uint64, servers []*protocol.Connection) error {
+func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 	i := uint64(0)
 
-	var NClients = make([]*NClient, threads)
-	numberOfOperations := len(workload[0])
+	var NClients = make([]*NClient, config.Threads)
+	numberOfOperations := config.NumberOfOperations
 
-	for i < uint64(threads) {
-		NClients[i] = New(i, sessionSemantics[i], servers)
+	for i < uint64(config.Threads) {
+		NClients[i] = New(i, config.SessionSemantic, servers)
 		i += 1
 	}
 	lower_bound := uint64(float64(numberOfOperations) * .2)
 	upper_bound := uint64(float64(numberOfOperations) * .8)
 
-	ops := threads * uint64(upper_bound-lower_bound)
+	ops := config.Threads * uint64(upper_bound-lower_bound)
 
 	var l sync.Mutex
 
 	set := false
 	avg_time := float64(0)
-	// avg_throughput := float64(0)
 	total_latency := time.Duration(0 * time.Microsecond)
 
 	var wg sync.WaitGroup
@@ -85,8 +96,9 @@ func Start(threads uint64, sessionSemantics []uint64, workload [][]uint64, pinne
 	i = uint64(0)
 	for i < uint64(len(NClients)) {
 		j := i
-		go func(c *NClient, workload []uint64, writeServer uint64, readServer uint64) error {
+		go func(c *NClient, workload []uint64, writeServer []uint64, readServer []uint64) error {
 			index := uint64(0)
+			var serverId uint64
 			barrier.Done()
 			barrier.Wait()
 			defer wg.Done()
@@ -94,15 +106,15 @@ func Start(threads uint64, sessionSemantics []uint64, workload [][]uint64, pinne
 			start_time := time.Now()
 			end_time := time.Now()
 			latency := time.Duration(0)
-			var serverId uint64
 
 			for index < uint64(numberOfOperations) {
-				if workload[index] == 0 {
-					serverId = readServer
-				} else {
-					serverId = writeServer
+				if config.RandomServer {
+					serverId = uint64(rand.Uint64() % uint64((len(servers))))
+				} else if !config.RandomServer && workload[index] == 0 {
+					serverId = readServer[rand.Int()%len(readServer)]
+				} else if !config.RandomServer && workload[index] == 1 {
+					serverId = writeServer[rand.Int()%len(writeServer)]
 				}
-				serverId = uint64(rand.Uint64() % uint64((len(servers))))
 
 				if index == uint64(lower_bound) {
 					start_time = time.Now()
@@ -110,7 +122,7 @@ func Start(threads uint64, sessionSemantics []uint64, workload [][]uint64, pinne
 				if index == uint64(upper_bound) {
 					end_time = time.Now()
 				}
-				// fmt.Println(index)
+
 				v := uint64(rand.Int64())
 
 				outGoingMessage := handler(c, workload[index], serverId, v, server.Message{})
@@ -118,16 +130,19 @@ func Start(threads uint64, sessionSemantics []uint64, workload [][]uint64, pinne
 				var m server.Message
 
 				sent_time := time.Now()
+
 				err := c.ServerEncoder[serverId].Encode(&outGoingMessage)
 				if err != nil {
 					fmt.Print(err)
 					return err
 				}
+
 				err = c.ServerDecoders[serverId].Decode(&m)
 				if err != nil {
 					fmt.Print(err)
 					return err
 				}
+
 				latency = latency + (time.Since(sent_time))
 
 				handler(c, 2, 0, 0, m)
@@ -136,28 +151,27 @@ func Start(threads uint64, sessionSemantics []uint64, workload [][]uint64, pinne
 
 			l.Lock()
 			if !set {
-			   avg_time = (end_time.Sub(start_time).Seconds())
-			   set = true
+				avg_time = (end_time.Sub(start_time).Seconds())
+				set = true
 			} else {
-			  avg_time = (avg_time + (end_time.Sub(start_time).Seconds())) / 2
+				avg_time = (avg_time + (end_time.Sub(start_time).Seconds())) / 2
 			}
 			total_latency = total_latency + latency
-			//fmt.Println(end_time.Sub(start_time).Seconds())
 			l.Unlock()
 			return nil
-		}(NClients[j], workload[j], pinnedWriteServer[j], pinnedReadServer[j])
+		}(NClients[j], config.Workload, config.WriteServer, config.ReadServer)
 
 		i += 1
 	}
 
 	wg.Wait()
 
-	fmt.Println("throughput:", int(float64(ops) / (avg_time)), "ops/sec")
+	fmt.Println("average_time:", int(avg_time), "sec")
+	fmt.Println("throughput:", int(float64(ops)/(avg_time)), "ops/sec")
 	fmt.Println("latency:", int(float64(total_latency.Microseconds())/float64(ops)), "us")
 
 	time.Sleep(100 * time.Millisecond)
 
-	// put this in a wait group
 	index := uint64(0)
 	for index < uint64(len(servers)) {
 		outGoingMessage := server.Message{MessageType: 4}
@@ -168,7 +182,6 @@ func Start(threads uint64, sessionSemantics []uint64, workload [][]uint64, pinne
 		index++
 	}
 
-	// fmt.Println(ops / int(total_time))
 	return nil
 }
 

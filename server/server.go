@@ -44,9 +44,9 @@ type NServer struct {
 	Id                uint64
 	Self              *protocol.Connection
 	Peers             []*protocol.Connection
-	PeerConnection    sync.Map // map[uint64]*gob.Encoder
-	PeerAckConnection sync.Map // map[uint64]*gob.Encoder
-	Clients           sync.Map // map[uint64]*gob.Encoder
+	PeerConnection    sync.Map
+	PeerAckConnection sync.Map
+	Clients           sync.Map
 
 	UnsatisfiedRequests    []Message
 	VectorClock            []uint64
@@ -337,7 +337,7 @@ func processRequest(server Server, request Message) (Server, []Message) {
 		var succeeded = false
 		var reply = Message{}
 		if len(request.C2S_Client_VersionVector) == 0 {
-			fmt.Println(request)
+			// fmt.Println(request)
 			panic(request)
 		}
 		succeeded, s, reply = processClientRequest(s, request)
@@ -420,19 +420,12 @@ func handler(s *NServer, request *Message) error {
 		for i < l {
 			index := i
 			if outGoingRequest[index].MessageType == 1 {
-				// c, _ := net.Dial(s.Peers[outGoingRequest[index].S2S_Gossip_Receiving_ServerId].Network, s.Peers[outGoingRequest[index].S2S_Gossip_Receiving_ServerId].Address)
-				// enc := gob.NewEncoder(s.PeerConnection[outGoingRequest[index].S2S_Gossip_Receiving_ServerId])
-				// enc.Encode(&outGoingRequest[index])
-				// c.Close()
-				// fmt.Println(outGoingRequest[index])
 				c, _ := s.PeerConnection.Load(outGoingRequest[index].S2S_Gossip_Receiving_ServerId)
 				err := c.(*gob.Encoder).Encode(&outGoingRequest[index])
 				if err != nil {
 					fmt.Println(err)
 				}
 			} else if outGoingRequest[index].MessageType == 2 {
-				// enc := gob.NewEncoder(s.PeerAckConnection[outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId])
-				// enc.Encode(&outGoingRequest[index])
 				c, _ := s.PeerAckConnection.Load(outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId)
 				err := c.(*gob.Encoder).Encode(&outGoingRequest[index])
 				if err != nil {
@@ -460,7 +453,6 @@ func Start(s *NServer) error {
 	}
 
 	go func() {
-		// will this work from just being in scope?
 		i := uint64(0)
 		for i < uint64(len(s.Peers)) {
 			if i != s.Id {
@@ -529,22 +521,19 @@ func Start(s *NServer) error {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			// fmt.Println(err)
+			fmt.Println(err)
 			return nil
 		}
 
 		// fmt.Println(conn.RemoteAddr())
 
-		go func(s *NServer, c net.Conn) error { // make a for loop here, have it wait until the client request, block on recv?
+		go func(s *NServer, c net.Conn) error {
 			dec := gob.NewDecoder(c)
 
 			for {
-				// fmt.Println(c)
-				// check if this is a server or not
 				m := Message{}
 				err := dec.Decode(&m)
 				if err != nil {
-					// EOF is coming from here for some reason?
 					fmt.Print(err)
 					c.Close()
 					return err
@@ -552,10 +541,7 @@ func Start(s *NServer) error {
 
 				s.mu.Lock()
 
-				// fmt.Println("message: ", m)
-				// fmt.Println("server: ", s, "\n")
 				if m.MessageType == 0 {
-					// we won't be able to run the client again unless they have different client id's because of this
 					_, ok := s.Clients.Load(m.C2S_Client_Id)
 					if !ok {
 						enc := gob.NewEncoder(c)
@@ -563,9 +549,8 @@ func Start(s *NServer) error {
 					}
 				}
 
-				// for testing purposes
 				if m.MessageType == 4 {
-					fmt.Println(s.OperationsPerformed)
+					fmt.Println("DONE")
 				}
 
 				handler(s, &m)
@@ -574,9 +559,3 @@ func Start(s *NServer) error {
 		}(s, conn)
 	}
 }
-
-// use channels to order
-// have clients thread
-// have servers connect by loop
-
-// what is EOF message,

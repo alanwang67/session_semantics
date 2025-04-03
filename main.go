@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"math/rand/v2"
 	"os"
 	"strconv"
 
@@ -33,52 +32,45 @@ func main() {
 
 	switch os.Args[1] {
 	case "client":
+		// first arugment is path to program
 		if len(os.Args) < 5 {
-			log.Fatalf("usage: go run main.go client [threads] [numberOfOperations] [sessionSemantic]")
+			log.Fatalf("usage: go run main.go client [threads] [numberOfOperations] [sessionSemantic] [randomServer] [writeServers] [readServers]")
 			return
 		}
 
-		threads, err := strconv.ParseUint(os.Args[2], 10, 64)
-		if err != nil {
-			log.Fatalf("can't convert %s to int: %s", os.Args[2], err)
-		}
+		threads, _ := strconv.ParseUint(os.Args[2], 10, 64)
+		numberOfOperations, _ := strconv.ParseUint(os.Args[3], 10, 64)
+		sessionSemantic, _ := strconv.ParseUint(os.Args[4], 10, 64)
+		randomServer, _ := strconv.ParseBool(os.Args[5])
 
-		numberOfOperations, err := strconv.ParseUint(os.Args[3], 10, 64)
-		if err != nil {
-			log.Fatalf("can't convert %s to int: %s", os.Args[3], err)
-		}
-		
-		sessionSemantic, err := strconv.ParseUint(os.Args[4], 10, 64)
-		if err != nil {
-			log.Fatalf("can't convert %s to int: %s", os.Args[3], err)
-		}
-
-		workload := make([][]uint64, threads)
+		workload := make([]uint64, numberOfOperations)
 		i := uint64(0)
 		for i < uint64(len(workload)) {
-			j := 0
-			tmp := make([]uint64, numberOfOperations)
-			for j < int(numberOfOperations) {
-				tmp[j] = uint64(1)
-				j += 1
-			}
-			workload[i] = tmp
+			workload[i] = uint64(1)
 			i += 1
 		}
 
-		sessionSemantics := make([]uint64, threads)
 		writeServer := make([]uint64, threads)
 		readServer := make([]uint64, threads)
 
 		i = uint64(0)
 		for i < uint64(threads) {
-			sessionSemantics[i] = sessionSemantic
 			writeServer[i] = 0
-			//uint64(rand.Uint64() % uint64((len(servers))))
-			readServer[i] = uint64(rand.Uint64() % uint64((len(servers))))
+			readServer[i] = 0
 			i++
 		}
-		client.Start(threads, sessionSemantics, workload, writeServer, writeServer, servers)
+
+		conf := client.ConfigurationInfo{
+			Threads:            threads,
+			NumberOfOperations: numberOfOperations,
+			SessionSemantic:    sessionSemantic,
+			Workload:           workload,
+			RandomServer:       randomServer,
+			WriteServer:        writeServer,
+			ReadServer:         readServer,
+		}
+
+		client.Start(conf, servers)
 	case "server":
 		if len(os.Args) < 4 {
 			log.Fatalf("usage: go run main.go server [id] [gossip_interval]")
