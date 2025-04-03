@@ -43,16 +43,16 @@ run_command_right() {
 if [[ $* == *-help* ]]; then 
     echo Provide: initialThreads numberOfOperations 
 else 
-    tmux kill-server -t experiment 
+    tmux kill-session -t experiment 
     
-    cd ~/Desktop/session_semantics
+    cd ~/session_semantics
     go build main.go 
 
-    cd ~/Desktop/session_semantics/generateGraphs/compareSessionSemantics
+    cd ~/session_semantics/generateGraphs/compareSessionSemantics
 
 
     SES="experiment"               
-    DIR="/home/alanwang/session_semantics/"   
+    DIR="~/session_semantics/"   
 
     create_session $SES $DIR       
     new_window $SES 1 $DIR
