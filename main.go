@@ -42,10 +42,10 @@ func main() {
 	switch os.Args[2] {
 	case "client":
 		// first arugment is path to program
-		if len(os.Args) < 8 {
-			log.Fatalf("usage: go run main.go _ client [threads] [numberOfOperations] [sessionSemantic] [randomServer] [writeServers] [readServers]")
-			return
-		}
+		// if len(os.Args) < 6 {
+		// 	log.Fatalf("usage: go run main.go _ client [threads] [time] [sessionSemantic] [randomServer]")
+		// 	return
+		// }
 
 		threads, _ := strconv.ParseUint(os.Args[3], 10, 64)
 		time, _ := strconv.ParseUint(os.Args[4], 10, 64)

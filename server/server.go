@@ -550,7 +550,7 @@ func Start(s *NServer) error {
 				}
 
 				if m.MessageType == 4 {
-					fmt.Println("DONE")
+					fmt.Println(s.MyOperations)
 				}
 
 				handler(s, &m)

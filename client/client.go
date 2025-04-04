@@ -166,6 +166,7 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 			} else {
 				avg_time = (avg_time + (end_time.Sub(start_time).Seconds())) / 2
 			}
+			fmt.Println(end_time.Sub(start_time).Seconds())
 			ops += operation_end - operation_start
 			total_latency = total_latency + latency
 			l.Unlock()
@@ -177,6 +178,7 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 
 	wg.Wait()
 
+	fmt.Println("total_operations:", int(ops), "ops")
 	fmt.Println("average_time:", int(avg_time), "sec")
 	fmt.Println("throughput:", int(float64(ops)/(avg_time)), "ops/sec")
 	fmt.Println("latency:", int(float64(total_latency.Microseconds())/float64(ops)), "us")
