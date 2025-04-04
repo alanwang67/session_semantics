@@ -1,0 +1,4 @@
+total_operations: 14133 ops
+average_time: 42 sec
+throughput: 329 ops/sec
+latency: 144954 us

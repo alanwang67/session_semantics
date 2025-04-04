@@ -423,19 +423,19 @@ func handler(s *NServer, request *Message) error {
 				c, _ := s.PeerConnection.Load(outGoingRequest[index].S2S_Gossip_Receiving_ServerId)
 				err := c.(*gob.Encoder).Encode(&outGoingRequest[index])
 				if err != nil {
-					fmt.Println(err)
+					panic(err)
 				}
 			} else if outGoingRequest[index].MessageType == 2 {
 				c, _ := s.PeerAckConnection.Load(outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId)
 				err := c.(*gob.Encoder).Encode(&outGoingRequest[index])
 				if err != nil {
-					fmt.Println(err)
+					panic(err)				
 				}
 			} else if outGoingRequest[index].MessageType == 4 {
 				c, _ := s.Clients.Load(outGoingRequest[index].S2C_Client_Number)
 				err := c.(*gob.Encoder).Encode(&outGoingRequest[index])
 				if err != nil {
-					fmt.Println(err)
+				       panic(err)
 				}
 			}
 			i++
