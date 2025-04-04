@@ -48,21 +48,14 @@ func main() {
 		}
 
 		threads, _ := strconv.ParseUint(os.Args[3], 10, 64)
-		numberOfOperations, _ := strconv.ParseUint(os.Args[4], 10, 64)
+		time, _ := strconv.ParseUint(os.Args[4], 10, 64)
 		sessionSemantic, _ := strconv.ParseUint(os.Args[5], 10, 64)
 		randomServer, _ := strconv.ParseBool(os.Args[6])
-
-		workload := make([]uint64, numberOfOperations)
-		i := uint64(0)
-		for i < uint64(len(workload)) {
-			workload[i] = uint64(1)
-			i += 1
-		}
 
 		writeServer := make([]uint64, threads)
 		readServer := make([]uint64, threads)
 
-		i = uint64(0)
+		i := uint64(0)
 		for i < uint64(threads) {
 			writeServer[i] = 0
 			readServer[i] = 0
@@ -70,13 +63,12 @@ func main() {
 		}
 
 		conf := client.ConfigurationInfo{
-			Threads:            threads,
-			NumberOfOperations: numberOfOperations,
-			SessionSemantic:    sessionSemantic,
-			Workload:           workload,
-			RandomServer:       randomServer,
-			WriteServer:        writeServer,
-			ReadServer:         readServer,
+			Threads:         threads,
+			Time:            time,
+			SessionSemantic: sessionSemantic,
+			RandomServer:    randomServer,
+			WriteServer:     writeServer,
+			ReadServer:      readServer,
 		}
 
 		client.Start(conf, servers)

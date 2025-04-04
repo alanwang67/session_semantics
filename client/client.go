@@ -18,7 +18,7 @@ type ConfigurationInfo struct {
 	Threads            uint64
 	NumberOfOperations uint64
 	SessionSemantic    uint64
-	Workload           []uint64
+	Time               uint64
 	RandomServer       bool
 	WriteServer        []uint64 // determines which servers we can write to
 	ReadServer         []uint64 // determines which servers we can read from
@@ -71,22 +71,22 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 	i := uint64(0)
 
 	var NClients = make([]*NClient, config.Threads)
-	numberOfOperations := config.NumberOfOperations
 
 	for i < uint64(config.Threads) {
 		NClients[i] = New(i, config.SessionSemantic, servers)
 		i += 1
 	}
-	lower_bound := uint64(float64(numberOfOperations) * .2)
-	upper_bound := uint64(float64(numberOfOperations) * .8)
 
-	ops := config.Threads * uint64(upper_bound-lower_bound)
+	off_set := 5
+	lower_bound := time.Duration(off_set) * time.Second
+	upper_bound := time.Duration(uint64(off_set)+config.Time) * time.Second
 
 	var l sync.Mutex
 
 	set := false
 	avg_time := float64(0)
 	total_latency := time.Duration(0 * time.Microsecond)
+	ops := uint64(0)
 
 	var wg sync.WaitGroup
 	var barrier sync.WaitGroup
@@ -96,36 +96,46 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 	i = uint64(0)
 	for i < uint64(len(NClients)) {
 		j := i
-		go func(c *NClient, workload []uint64, writeServer []uint64, readServer []uint64) error {
+		go func(c *NClient, writeServer []uint64, readServer []uint64) error {
 			index := uint64(0)
 			var serverId uint64
+			var start_time time.Time
+			var end_time time.Time
+			var operation_start uint64
+			var operation_end uint64
+
 			barrier.Done()
 			barrier.Wait()
 			defer wg.Done()
 
-			start_time := time.Now()
-			end_time := time.Now()
+			log_time := false
+			initial_time := time.Now()
 			latency := time.Duration(0)
 
-			for index < uint64(numberOfOperations) {
+			for {
+				operation := rand.Uint64() % uint64(2) // we can change the likelihood of this
 				if config.RandomServer {
 					serverId = uint64(rand.Uint64() % uint64((len(servers))))
-				} else if !config.RandomServer && workload[index] == 0 {
+				} else if !config.RandomServer && operation == 0 {
 					serverId = readServer[rand.Int()%len(readServer)]
-				} else if !config.RandomServer && workload[index] == 1 {
+				} else if !config.RandomServer && operation == 1 {
 					serverId = writeServer[rand.Int()%len(writeServer)]
 				}
 
-				if index == uint64(lower_bound) {
+				if !log_time && time.Since(initial_time) > lower_bound {
 					start_time = time.Now()
+					operation_start = index
+					log_time = true
 				}
-				if index == uint64(upper_bound) {
+				if time.Since(initial_time) > upper_bound {
 					end_time = time.Now()
+					operation_end = index
+					break
 				}
 
 				v := uint64(rand.Int64())
 
-				outGoingMessage := handler(c, workload[index], serverId, v, server.Message{})
+				outGoingMessage := handler(c, operation, serverId, v, server.Message{})
 
 				var m server.Message
 
@@ -156,10 +166,11 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 			} else {
 				avg_time = (avg_time + (end_time.Sub(start_time).Seconds())) / 2
 			}
+			ops += operation_end - operation_start
 			total_latency = total_latency + latency
 			l.Unlock()
 			return nil
-		}(NClients[j], config.Workload, config.WriteServer, config.ReadServer)
+		}(NClients[j], config.WriteServer, config.ReadServer)
 
 		i += 1
 	}
