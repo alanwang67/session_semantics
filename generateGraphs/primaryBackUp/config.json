@@ -1,7 +1,4 @@
 {
-    "threads": 2, 
-	"sessionSemantic": 5,
-	"time": 30,
 	"randomServer": false,
     "writeServers": [0],
     "readServers": [0],

@@ -49,9 +49,9 @@ func main() {
 		var data map[string]interface{}
 		json.Unmarshal(clientConfig, &data)
 
-		threads := uint64(data["threads"].(float64))
-		time := uint64(data["time"].(float64))
-		sessionSemantic := uint64(data["sessionSemantic"].(float64))
+		threads, _ := strconv.ParseUint(os.Args[4], 10, 64)
+		time, _ := strconv.ParseUint(os.Args[5], 10, 64)
+		sessionSemantic, _ := strconv.ParseUint(os.Args[6], 10, 64)
 		randomServer := data["randomServer"].(bool)
 		switchServer := uint64(data["switchServer"].(float64))
 

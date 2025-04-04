@@ -95,7 +95,7 @@ else
 
             sleep 20
 
-            cd ~/session_semantics; go run main.go $ct client $(( $1 * $i * 2 )) $2 $session true [] [] > ./generateGraphs/compareSessionSemantics/$session/$i
+            cd ~/session_semantics; go run main.go $ct client ./compareSessionSemantics/primaryBackUp/config.json $(( $1 * $i * 2 )) $2 $session > ./generateGraphs/compareSessionSemantics/$session/$i
 
             ct=$(($ct + 1))
             echo 'finished'
