@@ -452,6 +452,10 @@ func Start(s *NServer) error {
 		return nil
 	}
 
+	var lck sync.Mutex
+	r1 := false
+	r2 := false
+
 	go func() {
 		i := uint64(0)
 		for i < uint64(len(s.Peers)) {
@@ -472,6 +476,9 @@ func Start(s *NServer) error {
 			}
 			i++
 		}
+		lck.Lock()
+		r1 = true
+		lck.Unlock()
 	}()
 
 	go func() {
@@ -495,6 +502,9 @@ func Start(s *NServer) error {
 			}
 			i++
 		}
+		lck.Lock()
+		r2 = true
+		lck.Unlock()
 	}()
 
 	go func() error {
@@ -542,6 +552,11 @@ func Start(s *NServer) error {
 				s.mu.Lock()
 
 				if m.MessageType == 0 {
+					lck.Lock()
+					for !r1 || !r2 {
+						time.Sleep(5 * time.Second)
+					}
+					lck.Unlock()
 					_, ok := s.Clients.Load(m.C2S_Client_Id)
 					if !ok {
 						enc := gob.NewEncoder(c)

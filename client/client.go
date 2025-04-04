@@ -127,7 +127,7 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 					operation_start = index
 					log_time = true
 				}
-				if time.Since(initial_time) > upper_bound {
+				if log_time && time.Since(start_time) > (upper_bound) {
 					end_time = time.Now()
 					operation_end = index
 					break
