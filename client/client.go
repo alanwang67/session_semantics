@@ -15,13 +15,13 @@ import (
 // to pin a server choose the same one element array for both readServer and writeServer
 // every thread has the same read and write servers
 type ConfigurationInfo struct {
-	Threads            uint64
-	NumberOfOperations uint64
-	SessionSemantic    uint64
-	Time               uint64
-	RandomServer       bool
-	WriteServer        []uint64 // determines which servers we can write to
-	ReadServer         []uint64 // determines which servers we can read from
+	Threads         uint64
+	SessionSemantic uint64
+	Time            uint64
+	RandomServer    bool
+	WriteServer     []uint64 // determines which servers we can write to
+	ReadServer      []uint64 // determines which servers we can read from
+	SwitchServer    uint64
 }
 
 type NClient struct {
@@ -116,6 +116,8 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 				operation := rand.Uint64() % uint64(2) // we can change the likelihood of this
 				if config.RandomServer {
 					serverId = uint64(rand.Uint64() % uint64((len(servers))))
+				} else if !config.RandomServer && index%config.SwitchServer == 0 {
+					serverId = serverId + 1%uint64((len(servers)))
 				} else if !config.RandomServer && operation == 0 {
 					serverId = readServer[rand.Int()%len(readServer)]
 				} else if !config.RandomServer && operation == 1 {

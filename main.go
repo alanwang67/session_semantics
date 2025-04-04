@@ -41,25 +41,31 @@ func main() {
 
 	switch os.Args[2] {
 	case "client":
-		// first arugment is path to program
-		// if len(os.Args) < 6 {
-		// 	log.Fatalf("usage: go run main.go _ client [threads] [time] [sessionSemantic] [randomServer]")
-		// 	return
-		// }
+		// first argument is path to program
 
-		threads, _ := strconv.ParseUint(os.Args[3], 10, 64)
-		time, _ := strconv.ParseUint(os.Args[4], 10, 64)
-		sessionSemantic, _ := strconv.ParseUint(os.Args[5], 10, 64)
-		randomServer, _ := strconv.ParseBool(os.Args[6])
+		fileLocation := os.Args[3]
+		clientConfig, _ := os.ReadFile(fileLocation)
 
-		writeServer := make([]uint64, threads)
-		readServer := make([]uint64, threads)
+		var data map[string]interface{}
+		json.Unmarshal(clientConfig, &data)
 
-		i := uint64(0)
-		for i < uint64(threads) {
-			writeServer[i] = 0
-			readServer[i] = 0
-			i++
+		threads := uint64(data["threads"].(float64))
+		time := uint64(data["time"].(float64))
+		sessionSemantic := uint64(data["sessionSemantic"].(float64))
+		randomServer := data["randomServer"].(bool)
+		switchServer := uint64(data["switchServer"].(float64))
+
+		var l []interface{}
+		l = data["writeServers"].([]interface{})
+		writeServer := make([]uint64, len(l))
+		for i, v := range l {
+			writeServer[i] = uint64(v.(float64))
+		}
+
+		l = data["readServers"].([]interface{})
+		readServer := make([]uint64, len(l))
+		for i, v := range l {
+			readServer[i] = uint64(v.(float64))
 		}
 
 		conf := client.ConfigurationInfo{
@@ -69,6 +75,7 @@ func main() {
 			RandomServer:    randomServer,
 			WriteServer:     writeServer,
 			ReadServer:      readServer,
+			SwitchServer:    switchServer,
 		}
 
 		client.Start(conf, servers)
