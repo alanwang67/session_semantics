@@ -93,8 +93,8 @@ else
 
             run_command $SES 2 "./main $ct server 2 500"
 
-            sleep 20
-
+	    sleep 3
+	    
             cd ~/session_semantics; go run main.go $ct client $(( $1 * $i * 2 )) $2 $session true [] [] > ./generateGraphs/compareSessionSemantics/$session/$i
 
             ct=$(($ct + 1))
@@ -104,6 +104,7 @@ else
             tmux send-keys -t server1 C-c
             tmux send-keys -t server2 C-c
 
+	    sleep 5
         done
     done
 fi
