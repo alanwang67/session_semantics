@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"net"
+	// "sort"
 	"sync"
 	"time"
 
@@ -79,8 +80,8 @@ func New(id uint64, self *protocol.Connection, peers []*protocol.Connection, gos
 		Clients:                sync.Map{},
 		UnsatisfiedRequests:    make([]Message, 0),
 		VectorClock:            make([]uint64, len(peers)),
-		OperationsPerformed:    make([]Operation, 0),
-		MyOperations:           make([]Operation, 0),
+		OperationsPerformed:    make([]Operation, 0, 1000000),
+		MyOperations:           make([]Operation, 0, 1000000),
 		PendingOperations:      make([]Operation, 0),
 		GossipAcknowledgements: make([]uint64, len(peers)),
 		GossipInterval:         gossipInterval,
@@ -251,26 +252,64 @@ func getDataFromOperationLog(l []Operation) uint64 {
 	return 0
 }
 
-func receiveGossip(server Server, request Message) Server {
-	if len(request.S2S_Gossip_Operations) == 0 {
-		return server
-	}
+func remove(s []Operation, i uint64) []Operation {
+    s[i] = s[len(s)-1]
+    return s[:len(s)-1]
+}
 
-	server.PendingOperations = mergeOperations(server.PendingOperations, request.S2S_Gossip_Operations)
-
-	var i = uint64(0)
-
-	for i < uint64(len(server.PendingOperations)) {
-		if oneOffVersionVector(server.VectorClock, server.PendingOperations[i].VersionVector) {
-			server.OperationsPerformed = mergeOperations(server.OperationsPerformed, []Operation{server.PendingOperations[i]})
-			server.VectorClock = maxTS(server.VectorClock, server.PendingOperations[i].VersionVector)
-			server.PendingOperations = deleteAtIndexOperation(server.PendingOperations, i)
-			continue
+func stopSearching(v1 []uint64, v2 []uint64) bool {
+	i := uint64(0)
+	ct := uint64(0)
+	for i < uint64(len(v1)) {
+		if v1[i] + 2 > v2[i] {
+			ct += 1
 		}
-		i = i + 1
+	}
+	return ct == 2
+}
+
+func receiveGossip(server Server, request Message) (Server, bool) {
+	if len(request.S2S_Gossip_Operations) == 0 {
+		return server, true
 	}
 
-	return server
+	// server.OperationsPerformed = append(server.OperationsPerformed, request.S2S_Gossip_Operations...)
+	var passed = true 
+	var i = uint64(0)
+	for i < uint64(len(request.S2S_Gossip_Operations)) {
+		if oneOffVersionVector(server.VectorClock, request.S2S_Gossip_Operations[i].VersionVector) {
+			server.OperationsPerformed = sortedInsert(server.OperationsPerformed, request.S2S_Gossip_Operations[i])
+			server.VectorClock = maxTS(server.VectorClock, request.S2S_Gossip_Operations[i].VersionVector)
+		} else if compareVersionVector(server.VectorClock, request.S2S_Gossip_Operations[i].VersionVector) {
+			i += 1
+			continue
+		} else {
+			passed = false
+			// break
+			// server.PendingOperations = append(server.PendingOperations, request.S2S_Gossip_Operations[i]) 
+		}
+		i += 1
+	}
+	
+
+	// sort.Slice(server.PendingOperations, func(i, j int) bool {
+	// 	return lexicographicCompare(server.PendingOperations[j].VersionVector, server.PendingOperations[i].VersionVector)
+	// })
+
+	// i = uint64(0)
+
+	// for i < uint64(len(server.PendingOperations)) {
+	// 	if oneOffVersionVector(server.VectorClock, server.PendingOperations[i].VersionVector) {
+	// 		server.OperationsPerformed = append(server.OperationsPerformed, server.PendingOperations[i])
+	// 		server.VectorClock = maxTS(server.VectorClock, server.PendingOperations[i].VersionVector)
+	// 		server.PendingOperations = remove(server.PendingOperations, i)
+	// 		continue
+	// 	}
+	// 	break
+	// 	i = i + 1
+	// }
+
+	return server, passed
 }
 
 func acknowledgeGossip(server Server, request Message) Server {
@@ -287,7 +326,7 @@ func getGossipOperations(server Server, serverId uint64) []Operation {
 		return ret
 	}
 
-	return append(ret, server.MyOperations[server.GossipAcknowledgements[serverId]:]...)
+	return server.MyOperations[server.GossipAcknowledgements[serverId]:]
 }
 
 func processClientRequest(server Server, request Message) (bool, Server, Message) {
@@ -314,7 +353,7 @@ func processClientRequest(server Server, request Message) (bool, Server, Message
 			Data:          request.C2S_Client_Data,
 		})
 
-		server.MyOperations = sortedInsert(server.MyOperations, Operation{
+		server.MyOperations = sortedInsert(server.MyOperations, Operation{ // this still preserves semantics
 			VersionVector: append([]uint64(nil), server.VectorClock...),
 			Data:          request.C2S_Client_Data,
 		})
@@ -347,12 +386,15 @@ func processRequest(server Server, request Message) (Server, []Message) {
 			s.UnsatisfiedRequests = append(s.UnsatisfiedRequests, request)
 		}
 	} else if request.MessageType == 1 {
-		s = receiveGossip(s, request)
-		outGoingRequests = append(outGoingRequests,
-			Message{MessageType: 2,
-				S2S_Acknowledge_Gossip_Sending_ServerId:   s.Id,
-				S2S_Acknowledge_Gossip_Receiving_ServerId: request.S2S_Gossip_Sending_ServerId,
-				S2S_Acknowledge_Gossip_Index:              request.S2S_Gossip_Index})
+		var b bool
+		s, b = receiveGossip(s, request)
+		if b {
+			outGoingRequests = append(outGoingRequests,
+				Message{MessageType: 2,
+					S2S_Acknowledge_Gossip_Sending_ServerId:   s.Id,
+					S2S_Acknowledge_Gossip_Receiving_ServerId: request.S2S_Gossip_Sending_ServerId,
+					S2S_Acknowledge_Gossip_Index:              request.S2S_Gossip_Index})
+		}
 
 		var i = uint64(0)
 		var reply = Message{}
@@ -423,19 +465,19 @@ func handler(s *NServer, request *Message) error {
 				c, _ := s.PeerConnection.Load(outGoingRequest[index].S2S_Gossip_Receiving_ServerId)
 				err := c.(*gob.Encoder).Encode(&outGoingRequest[index])
 				if err != nil {
-					panic(err)
+					fmt.Println(err)
 				}
 			} else if outGoingRequest[index].MessageType == 2 {
 				c, _ := s.PeerAckConnection.Load(outGoingRequest[index].S2S_Acknowledge_Gossip_Receiving_ServerId)
 				err := c.(*gob.Encoder).Encode(&outGoingRequest[index])
 				if err != nil {
-					panic(err)				
+					fmt.Println(err)
 				}
 			} else if outGoingRequest[index].MessageType == 4 {
 				c, _ := s.Clients.Load(outGoingRequest[index].S2C_Client_Number)
 				err := c.(*gob.Encoder).Encode(&outGoingRequest[index])
 				if err != nil {
-				       panic(err)
+					fmt.Println(err)
 				}
 			}
 			i++
@@ -451,10 +493,6 @@ func Start(s *NServer) error {
 		fmt.Println(err)
 		return nil
 	}
-
-	var lck sync.Mutex
-	r1 := false
-	r2 := false
 
 	go func() {
 		i := uint64(0)
@@ -476,9 +514,6 @@ func Start(s *NServer) error {
 			}
 			i++
 		}
-		lck.Lock()
-		r1 = true
-		lck.Unlock()
 	}()
 
 	go func() {
@@ -502,9 +537,6 @@ func Start(s *NServer) error {
 			}
 			i++
 		}
-		lck.Lock()
-		r2 = true
-		lck.Unlock()
 	}()
 
 	go func() error {
@@ -552,11 +584,6 @@ func Start(s *NServer) error {
 				s.mu.Lock()
 
 				if m.MessageType == 0 {
-					lck.Lock()
-					for !r1 || !r2 {
-						time.Sleep(5 * time.Second)
-					}
-					lck.Unlock()
 					_, ok := s.Clients.Load(m.C2S_Client_Id)
 					if !ok {
 						enc := gob.NewEncoder(c)
@@ -565,8 +592,7 @@ func Start(s *NServer) error {
 				}
 
 				if m.MessageType == 4 {
-					// fmt.Println(s.OperationsPerformed)
-					fmt.Println("Done")
+					fmt.Println(s.OperationsPerformed)
 				}
 
 				handler(s, &m)

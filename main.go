@@ -6,6 +6,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"runtime/pprof"
+	"time"
+	// "runtime/debug"
 
 	"github.com/alanwang67/session_semantics/client"
 	"github.com/alanwang67/session_semantics/protocol"
@@ -20,6 +23,11 @@ func processAddressString(address string, n uint64) string {
 
 func main() {
 	config, _ := os.ReadFile("config.json")
+
+	f, _ := os.Create("cpu.pprof" + os.Args[2] + "noGossip")
+
+	pprof.StartCPUProfile(f)
+	defer pprof.StopCPUProfile()
 
 	portOffSet, _ := strconv.ParseUint(os.Args[1], 10, 64)
 
@@ -88,7 +96,18 @@ func main() {
 
 		gossipInterval, _ := strconv.ParseUint(os.Args[4], 10, 64)
 
-		server.Start(server.New(id, servers[id], servers, gossipInterval))
+		go func() {
+			server.Start(server.New(id, servers[id], servers, gossipInterval))
+		}()
+
+		time.Sleep(120 * time.Second)
+		n := time.Now()
+
+		for {
+			if time.Since(n) > time.Duration(5*time.Second) {
+				break
+			}
+		}
 	default:
 		log.Fatalf("unknown command: %s", os.Args[1])
 	}
