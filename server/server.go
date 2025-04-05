@@ -4,7 +4,6 @@ import (
 	"encoding/gob"
 	"fmt"
 	"net"
-	// "sort"
 	"sync"
 	"time"
 
@@ -80,8 +79,8 @@ func New(id uint64, self *protocol.Connection, peers []*protocol.Connection, gos
 		Clients:                sync.Map{},
 		UnsatisfiedRequests:    make([]Message, 0),
 		VectorClock:            make([]uint64, len(peers)),
-		OperationsPerformed:    make([]Operation, 0, 1000000),
-		MyOperations:           make([]Operation, 0, 1000000),
+		OperationsPerformed:    make([]Operation, 0),
+		MyOperations:           make([]Operation, 0),
 		PendingOperations:      make([]Operation, 0),
 		GossipAcknowledgements: make([]uint64, len(peers)),
 		GossipInterval:         gossipInterval,
@@ -252,62 +251,28 @@ func getDataFromOperationLog(l []Operation) uint64 {
 	return 0
 }
 
-func remove(s []Operation, i uint64) []Operation {
-    s[i] = s[len(s)-1]
-    return s[:len(s)-1]
-}
-
-func stopSearching(v1 []uint64, v2 []uint64) bool {
-	i := uint64(0)
-	ct := uint64(0)
-	for i < uint64(len(v1)) {
-		if v1[i] + 2 > v2[i] {
-			ct += 1
-		}
-	}
-	return ct == 2
-}
-
 func receiveGossip(server Server, request Message) (Server, bool) {
+	var passed = true
 	if len(request.S2S_Gossip_Operations) == 0 {
-		return server, true
+		return server, passed
 	}
 
-	// server.OperationsPerformed = append(server.OperationsPerformed, request.S2S_Gossip_Operations...)
-	var passed = true 
+	// server.PendingOperations = mergeOperations(server.PendingOperations, request.S2S_Gossip_Operations)
+
 	var i = uint64(0)
+
 	for i < uint64(len(request.S2S_Gossip_Operations)) {
 		if oneOffVersionVector(server.VectorClock, request.S2S_Gossip_Operations[i].VersionVector) {
 			server.OperationsPerformed = sortedInsert(server.OperationsPerformed, request.S2S_Gossip_Operations[i])
 			server.VectorClock = maxTS(server.VectorClock, request.S2S_Gossip_Operations[i].VersionVector)
-		} else if compareVersionVector(server.VectorClock, request.S2S_Gossip_Operations[i].VersionVector) {
+		} else if (compareVersionVector(server.VectorClock, request.S2S_Gossip_Operations[i].VersionVector)) {
 			i += 1
 			continue
 		} else {
 			passed = false
-			// break
-			// server.PendingOperations = append(server.PendingOperations, request.S2S_Gossip_Operations[i]) 
 		}
-		i += 1
+		i = i + 1
 	}
-	
-
-	// sort.Slice(server.PendingOperations, func(i, j int) bool {
-	// 	return lexicographicCompare(server.PendingOperations[j].VersionVector, server.PendingOperations[i].VersionVector)
-	// })
-
-	// i = uint64(0)
-
-	// for i < uint64(len(server.PendingOperations)) {
-	// 	if oneOffVersionVector(server.VectorClock, server.PendingOperations[i].VersionVector) {
-	// 		server.OperationsPerformed = append(server.OperationsPerformed, server.PendingOperations[i])
-	// 		server.VectorClock = maxTS(server.VectorClock, server.PendingOperations[i].VersionVector)
-	// 		server.PendingOperations = remove(server.PendingOperations, i)
-	// 		continue
-	// 	}
-	// 	break
-	// 	i = i + 1
-	// }
 
 	return server, passed
 }
@@ -326,7 +291,7 @@ func getGossipOperations(server Server, serverId uint64) []Operation {
 		return ret
 	}
 
-	return server.MyOperations[server.GossipAcknowledgements[serverId]:]
+	return append(ret, server.MyOperations[server.GossipAcknowledgements[serverId]:]...)
 }
 
 func processClientRequest(server Server, request Message) (bool, Server, Message) {
@@ -353,7 +318,7 @@ func processClientRequest(server Server, request Message) (bool, Server, Message
 			Data:          request.C2S_Client_Data,
 		})
 
-		server.MyOperations = sortedInsert(server.MyOperations, Operation{ // this still preserves semantics
+		server.MyOperations = sortedInsert(server.MyOperations, Operation{
 			VersionVector: append([]uint64(nil), server.VectorClock...),
 			Data:          request.C2S_Client_Data,
 		})
