@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	// "sort"
 	"time"
 
 	"github.com/alanwang67/session_semantics/protocol"
@@ -251,30 +252,38 @@ func getDataFromOperationLog(l []Operation) uint64 {
 	return 0
 }
 
-func receiveGossip(server Server, request Message) (Server, bool) {
-	var passed = true
+func receiveGossip(server Server, request Message) Server {
 	if len(request.S2S_Gossip_Operations) == 0 {
-		return server, passed
+		return server
 	}
-
-	// server.PendingOperations = mergeOperations(server.PendingOperations, request.S2S_Gossip_Operations)
-
 	var i = uint64(0)
 
 	for i < uint64(len(request.S2S_Gossip_Operations)) {
 		if oneOffVersionVector(server.VectorClock, request.S2S_Gossip_Operations[i].VersionVector) {
 			server.OperationsPerformed = sortedInsert(server.OperationsPerformed, request.S2S_Gossip_Operations[i])
 			server.VectorClock = maxTS(server.VectorClock, request.S2S_Gossip_Operations[i].VersionVector)
-		} else if (compareVersionVector(server.VectorClock, request.S2S_Gossip_Operations[i].VersionVector)) {
-			i += 1
-			continue
+		} else if compareVersionVector(server.VectorClock, request.S2S_Gossip_Operations[i].VersionVector) {
+			i = i + 1
+			continue 
 		} else {
-			passed = false
+			server.PendingOperations = append(server.PendingOperations, request.S2S_Gossip_Operations[i])
 		}
 		i = i + 1
 	}
 
-	return server, passed
+	i = uint64(0)
+
+	for i < uint64(len(server.PendingOperations)) {
+		if oneOffVersionVector(server.VectorClock, server.PendingOperations[i].VersionVector) {
+			server.OperationsPerformed = sortedInsert(server.OperationsPerformed, server.PendingOperations[i])
+			server.VectorClock = maxTS(server.VectorClock, server.PendingOperations[i].VersionVector)
+			server.PendingOperations = deleteAtIndexOperation(server.PendingOperations, i)
+			continue
+		} 
+		i = i + 1
+	}
+
+	return server
 }
 
 func acknowledgeGossip(server Server, request Message) Server {
@@ -291,7 +300,7 @@ func getGossipOperations(server Server, serverId uint64) []Operation {
 		return ret
 	}
 
-	return append(ret, server.MyOperations[server.GossipAcknowledgements[serverId]:]...)
+	return server.MyOperations[server.GossipAcknowledgements[serverId]:]
 }
 
 func processClientRequest(server Server, request Message) (bool, Server, Message) {
@@ -351,15 +360,12 @@ func processRequest(server Server, request Message) (Server, []Message) {
 			s.UnsatisfiedRequests = append(s.UnsatisfiedRequests, request)
 		}
 	} else if request.MessageType == 1 {
-		var b bool
-		s, b = receiveGossip(s, request)
-		if b {
-			outGoingRequests = append(outGoingRequests,
-				Message{MessageType: 2,
-					S2S_Acknowledge_Gossip_Sending_ServerId:   s.Id,
-					S2S_Acknowledge_Gossip_Receiving_ServerId: request.S2S_Gossip_Sending_ServerId,
-					S2S_Acknowledge_Gossip_Index:              request.S2S_Gossip_Index})
-		}
+		s = receiveGossip(s, request)
+		outGoingRequests = append(outGoingRequests,
+			Message{MessageType: 2,
+				S2S_Acknowledge_Gossip_Sending_ServerId:   s.Id,
+				S2S_Acknowledge_Gossip_Receiving_ServerId: request.S2S_Gossip_Sending_ServerId,
+				S2S_Acknowledge_Gossip_Index:              request.S2S_Gossip_Index})
 
 		var i = uint64(0)
 		var reply = Message{}
@@ -557,7 +563,7 @@ func Start(s *NServer) error {
 				}
 
 				if m.MessageType == 4 {
-					fmt.Println(s.OperationsPerformed)
+					// fmt.Println(s.OperationsPerformed)
 				}
 
 				handler(s, &m)
