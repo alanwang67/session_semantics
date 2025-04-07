@@ -200,9 +200,12 @@ func sortedInsert(s []Operation, value Operation) []Operation {
 	if uint64(len(s)) == index {
 		return append(s, value)
 	} else {
-		right := append([]Operation{value}, s[index:]...)
-		result := append(s[:index], right...)
-		return result
+		// right := append([]Operation{value}, s[index:]...)
+		// result := append(s[:index], right...)
+		// return result
+		v := s[index]
+		s[index] = value 
+		return append(s, v)
 	}
 }
 
