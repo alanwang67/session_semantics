@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
-	"sort"
+	// "sort"
 	"time"
 
 	"github.com/alanwang67/session_semantics/protocol"
@@ -266,14 +266,14 @@ func receiveGossip(server Server, request Message) Server {
 			i = i + 1
 			continue 
 		} else {
-			server.PendingOperations = append(server.PendingOperations, request.S2S_Gossip_Operations[i])
+			server.PendingOperations = sortedInsert(server.PendingOperations, request.S2S_Gossip_Operations[i])
 		}
 		i = i + 1
 	}
 	
-	sort.Slice(server.PendingOperations, func(i int, j int) bool {
-		return compareVersionVector(server.PendingOperations[j].VersionVector, server.PendingOperations[i].VersionVector)
-	})
+	// sort.Slice(server.PendingOperations, func(i int, j int) bool {
+	// 	return compareVersionVector(server.PendingOperations[j].VersionVector, server.PendingOperations[i].VersionVector)
+	// })
 
 	i = uint64(0)
 	
@@ -282,7 +282,6 @@ func receiveGossip(server Server, request Message) Server {
 		if oneOffVersionVector(server.VectorClock, server.PendingOperations[i].VersionVector) {
 			server.OperationsPerformed = sortedInsert(server.OperationsPerformed, server.PendingOperations[i])
 			server.VectorClock = maxTS(server.VectorClock, server.PendingOperations[i].VersionVector)
-			// seen = append(seen, i)
 			server.PendingOperations = deleteAtIndexOperation(server.PendingOperations, i)
 			continue
 		} 

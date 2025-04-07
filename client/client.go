@@ -113,7 +113,8 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 			latency := time.Duration(0)
 			
 			for {
-				operation := rand.Uint64() % uint64(2) // we can change the likelihood of this
+				// operation := rand.Uint64() % uint64(2) // we can change the likelihood of this
+				operation := uint64(1)
 				if config.RandomServer {
 					serverId = uint64(rand.IntN(3) + 0)
 				} else if !config.RandomServer && operation == 0 {
