@@ -200,12 +200,12 @@ func sortedInsert(s []Operation, value Operation) []Operation {
 	if uint64(len(s)) == index {
 		return append(s, value)
 	} else {
-		right := append([]Operation{value}, s[index:]...)
-		result := append(s[:index], right...)
-		return result
-		// v := s[index]
-		// s[index] = value 
-		// return append(s, v)
+		// right := append([]Operation{value}, s[index:]...)
+		// result := append(s[:index], right...)
+		// return result
+		v := s[index]
+		s[index] = value 
+		return append(s, v)
 	}
 }
 
@@ -297,7 +297,7 @@ func receiveGossip(server Server, request Message) Server {
 			i = i + 1
 			continue 
 		} else {
-			server.PendingOperations = append(server.PendingOperations, request.S2S_Gossip_Operations[i])
+			server.PendingOperations = sortedInsert(server.PendingOperations, request.S2S_Gossip_Operations[i])
 		}
 		i = i + 1
 	}
@@ -307,21 +307,17 @@ func receiveGossip(server Server, request Message) Server {
 	// })
 
 	// seems like deleting operations could have a variable performance depending on the consistency level?
-	// i = uint64(0)
-	// output := make([]Operation, 0, len(server.PendingOperations))
-	// // why does eventual have bad performance compared to causal?
-	// for i < uint64(len(server.PendingOperations)) {
-	// 	if oneOffVersionVector(server.VectorClock, server.PendingOperations[i].VersionVector) {
-	// 		server.OperationsPerformed = sortedInsert(server.OperationsPerformed, server.PendingOperations[i])
-	// 		server.VectorClock = maxTS(server.VectorClock, server.PendingOperations[i].VersionVector)
-	//      server.PendingOperations = deleteAtIndex(server.PendingOperations, i)
-	// 		continue
-	// 	} else {
-	// 		// maybe do this so we don't have to reiterate over pending operations
-	// 		output = append(output, server.PendingOperations[i])
-	// 	}
-	// 	i = i + 1
-	// }
+	i = uint64(0)
+	// why does eventual have bad performance compared to causal?
+	for i < uint64(len(server.PendingOperations)) {
+		if oneOffVersionVector(server.VectorClock, server.PendingOperations[i].VersionVector) {
+			server.OperationsPerformed = sortedInsert(server.OperationsPerformed, server.PendingOperations[i])
+			server.VectorClock = maxTS(server.VectorClock, server.PendingOperations[i].VersionVector)
+	     	server.PendingOperations = deleteAtIndexOperation(server.PendingOperations, i)
+			continue
+		}
+		i = i + 1
+	}
 
 	// server.PendingOperations = output
 	return server
