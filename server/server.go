@@ -272,7 +272,7 @@ func receiveGossip(server Server, request Message) Server {
 	}
 	
 	sort.Slice(server.PendingOperations, func(i int, j int) bool {
-		return compareVersionVector(server.PendingOperations[i].VersionVector, server.PendingOperations[j].VersionVector)
+		return compareVersionVector(server.PendingOperations[j].VersionVector, server.PendingOperations[i].VersionVector)
 	})
 
 	i = uint64(0)
