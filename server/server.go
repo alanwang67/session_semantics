@@ -206,33 +206,6 @@ func sortedInsert(s []Operation, value Operation) []Operation {
 	}
 }
 
-func mergeOperations(l1 []Operation, l2 []Operation) []Operation {
-	if (len(l1) == 0) && (len(l2) == 0) {
-		return make([]Operation, 0)
-	}
-
-	var output = append([]Operation{}, l1...)
-	var i = uint64(0)
-	var l = uint64(len(l2))
-
-	for i < l {
-		output = sortedInsert(output, l2[i])
-		i++
-	}
-
-	var prev = uint64(1)
-	var curr = uint64(1)
-	for curr < uint64(len(output)) {
-		if !equalOperations(output[curr-1], output[curr]) {
-			output[prev] = output[curr]
-			prev = prev + 1
-		}
-		curr = curr + 1
-	}
-
-	return output[:prev]
-}
-
 func deleteAtIndexOperation(l []Operation, index uint64) []Operation {
 	var ret = make([]Operation, 0)
 	ret = append(ret, l[:index]...)
@@ -266,24 +239,17 @@ func receiveGossip(server Server, request Message) Server {
 			i = i + 1
 			continue 
 		} else {
-			server.PendingOperations = append(server.PendingOperations, request.S2S_Gossip_Operations[i])
+			server.PendingOperations = sortedInsert(server.PendingOperations, request.S2S_Gossip_Operations[i])
 		}
 		i = i + 1
 	}
 	
-	// sort.Slice(server.PendingOperations, func(i int, j int) bool {
-	// 	return compareVersionVector(server.PendingOperations[j].VersionVector, server.PendingOperations[i].VersionVector)
-	// })
-	// how to do pending operations? 
-
 	i = uint64(0)
 	seen := make([]uint64, 0)
 	for i < uint64(len(server.PendingOperations)) {
 		if oneOffVersionVector(server.VectorClock, server.PendingOperations[i].VersionVector) {
 			server.OperationsPerformed = sortedInsert(server.OperationsPerformed, server.PendingOperations[i])
 			server.VectorClock = maxTS(server.VectorClock, server.PendingOperations[i].VersionVector)
-			// server.PendingOperations = deleteAtIndexOperation(server.PendingOperations, i)
-			// continue
 			seen = append(seen, i)
 		}
 		i = i + 1
