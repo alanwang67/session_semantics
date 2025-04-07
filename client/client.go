@@ -122,7 +122,7 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 				} else if !config.RandomServer && operation == 1 {
 					serverId = writeServer[rand.Int()%len(writeServer)]
 				}
-				fmt.Println(serverId)
+				// fmt.Println(serverId)
 				// serverId = uint64(c.Id % 3)
 				// fmt.Println(serverId)
 
