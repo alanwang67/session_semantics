@@ -255,6 +255,8 @@ func getDataFromOperationLog(l []Operation) uint64 {
 	return 0
 }
 
+// likely define a sortedInsert for compareVerisonVector 
+
 func receiveGossip(server Server, request Message) Server {
 	if len(request.S2S_Gossip_Operations) == 0 {
 		return server
@@ -281,6 +283,8 @@ func receiveGossip(server Server, request Message) Server {
 	i = uint64(0)
 	
 	seen := make([]uint64, 0)
+	// new :=[ ]
+
 	// why does eventual have bad performance compared to causal?
 	for i < uint64(len(server.PendingOperations)) {
 		if oneOffVersionVector(server.VectorClock, server.PendingOperations[i].VersionVector) {
@@ -288,27 +292,27 @@ func receiveGossip(server Server, request Message) Server {
 			server.VectorClock = maxTS(server.VectorClock, server.PendingOperations[i].VersionVector)
 			seen = append(seen, i)
 			// server.PendingOperations = deleteAtIndexOperation(server.PendingOperations, i)
-			continue
+			// continue 
 		} 
 		i = i + 1
 	}
 
-	ret := make([]Operation, 0)
-	i = uint64(0)
-	j := uint64(0)
-	for i < uint64(len(server.PendingOperations)) {
-		if j == uint64(len(seen)) {
-			break
-		}
-		if i == seen[j] {
-			i = i + 1
-			j = j + 1
-		}		
-		ret[i] = server.PendingOperations[i]
-		i = i + 1
-	}
+	// ret := make([]Operation, 0)
+	// i = uint64(0)
+	// j := uint64(0)
+	// for i < uint64(len(server.PendingOperations)) {
+	// 	if j == uint64(len(seen)) {
+	// 		break
+	// 	}
+	// 	if i == seen[j] {
+	// 		i = i + 1
+	// 		j = j + 1
+	// 	}		
+	// 	ret[i] = server.PendingOperations[i]
+	// 	i = i + 1
+	// }
 
-	server.PendingOperations = ret
+	// server.PendingOperations = ret
 	return server
 }
 
