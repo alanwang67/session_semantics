@@ -269,7 +269,7 @@ func receiveGossip(server Server, request Message) Server {
 			i = i + 1
 			continue 
 		} else {
-			server.PendingOperations = append(server.PendingOperations, request.S2S_Gossip_Operations[i])
+			server.PendingOperations = sortedInsert(server.PendingOperations, request.S2S_Gossip_Operations[i])
 		}
 		i = i + 1
 	}
