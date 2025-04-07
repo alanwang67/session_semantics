@@ -123,7 +123,7 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 					serverId = writeServer[rand.Int()%len(writeServer)]
 				}
 				// fmt.Println(serverId)
-				// serverId = uint64(c.Id % 3)
+				serverId = uint64(c.Id % 3)
 				// fmt.Println(serverId)
 
 				if !log_time && time.Since(initial_time) > lower_bound {
