@@ -256,6 +256,32 @@ func getDataFromOperationLog(l []Operation) uint64 {
 }
 
 // likely define a sortedInsert for compareVerisonVector 
+// func binarySearchPending(s []Operation, needle Operation) uint64 {
+// 	var i = uint64(0)
+// 	var j = uint64(len(s))
+// 	for i < j {
+// 		mid := i + (j-i)/2
+// 		// can mid go to 0
+// 		if compareVersionVector(needle.VersionVector, s[mid].VersionVector) & !(compareVerisonVector(needle.VersionVector, s[mid-1].VersionVector)) {
+// 			i = mid + 1
+// 		} else {
+// 			j = mid
+// 		}
+// 	}
+
+// 	return i
+// }
+
+// func sortedInsertPending(s []Operation, value Operation) []Operation {
+// 	index := binarySearchPending(s, value)
+// 	if uint64(len(s)) == index {
+// 		return append(s, value)
+// 	} else {
+// 		right := append([]Operation{value}, s[index:]...)
+// 		result := append(s[:index], right...)
+// 		return result
+// 	}
+// }
 
 func receiveGossip(server Server, request Message) Server {
 	if len(request.S2S_Gossip_Operations) == 0 {
@@ -271,7 +297,7 @@ func receiveGossip(server Server, request Message) Server {
 			i = i + 1
 			continue 
 		} else {
-			server.PendingOperations = sortedInsert(server.PendingOperations, request.S2S_Gossip_Operations[i])
+			server.PendingOperations = append(server.PendingOperations, request.S2S_Gossip_Operations[i])
 		}
 		i = i + 1
 	}
@@ -280,21 +306,24 @@ func receiveGossip(server Server, request Message) Server {
 	// 	return compareVersionVector(server.PendingOperations[j].VersionVector, server.PendingOperations[i].VersionVector)
 	// })
 
-	i = uint64(0)
-	output := make([]Operation, 0)
-	// why does eventual have bad performance compared to causal?
-	for i < uint64(len(server.PendingOperations)) {
-		if oneOffVersionVector(server.VectorClock, server.PendingOperations[i].VersionVector) {
-			server.OperationsPerformed = sortedInsert(server.OperationsPerformed, server.PendingOperations[i])
-			server.VectorClock = maxTS(server.VectorClock, server.PendingOperations[i].VersionVector)
-		} else {
-			// maybe do this so we don't have to reiterate over pending operations
-			output = append(output, server.PendingOperations[i])
-		}
-		i = i + 1
-	}
+	// seems like deleting operations could have a variable performance depending on the consistency level?
+	// i = uint64(0)
+	// output := make([]Operation, 0, len(server.PendingOperations))
+	// // why does eventual have bad performance compared to causal?
+	// for i < uint64(len(server.PendingOperations)) {
+	// 	if oneOffVersionVector(server.VectorClock, server.PendingOperations[i].VersionVector) {
+	// 		server.OperationsPerformed = sortedInsert(server.OperationsPerformed, server.PendingOperations[i])
+	// 		server.VectorClock = maxTS(server.VectorClock, server.PendingOperations[i].VersionVector)
+	//      server.PendingOperations = deleteAtIndex(server.PendingOperations, i)
+	// 		continue
+	// 	} else {
+	// 		// maybe do this so we don't have to reiterate over pending operations
+	// 		output = append(output, server.PendingOperations[i])
+	// 	}
+	// 	i = i + 1
+	// }
 
-	server.PendingOperations = output
+	// server.PendingOperations = output
 	return server
 }
 
