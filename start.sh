@@ -80,9 +80,12 @@ run_command $SES 3 "ssh srg05"
 sleep 1
 
 run_command $SES 0 "cd session_semantics"
+run_command $SES 0 "./main 0 server 0 500"
 
 run_command $SES 1 "cd session_semantics"
+run_command $SES 1 "./main 0 server 0 500"
 
 run_command $SES 2 "cd session_semantics"
+run_command $SES 2 "./main 0 server 0 500"
 
 attach_session $SES

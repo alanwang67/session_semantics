@@ -8,6 +8,7 @@ import (
 	"strings"
 	"runtime/pprof"
 	"time"
+	"fmt"
 	// "runtime/debug"
 
 	"github.com/alanwang67/session_semantics/client"
@@ -24,10 +25,9 @@ func processAddressString(address string, n uint64) string {
 func main() {
 	config, _ := os.ReadFile("config.json")
 
-	f, _ := os.Create("cpu.pprof" + os.Args[2] + "noGossip")
+	f, _ := os.Create("profiler" + os.Args[2] + os.Args[3])
 
 	pprof.StartCPUProfile(f)
-	defer pprof.StopCPUProfile()
 
 	portOffSet, _ := strconv.ParseUint(os.Args[1], 10, 64)
 
@@ -85,7 +85,7 @@ func main() {
 			ReadServer:      readServer,
 			SwitchServer:    switchServer,
 		}
-
+		fmt.Println(conf)
 		client.Start(conf, servers)
 	case "server":
 		if len(os.Args) < 4 {
@@ -100,7 +100,7 @@ func main() {
 			server.Start(server.New(id, servers[id], servers, gossipInterval))
 		}()
 
-		time.Sleep(120 * time.Second)
+		time.Sleep(88 * time.Second)
 		n := time.Now()
 
 		for {
@@ -108,6 +108,7 @@ func main() {
 				break
 			}
 		}
+		pprof.StopCPUProfile()
 	default:
 		log.Fatalf("unknown command: %s", os.Args[1])
 	}

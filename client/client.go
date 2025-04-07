@@ -77,7 +77,7 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 		i += 1
 	}
 
-	off_set := 5
+	off_set := 10
 	lower_bound := time.Duration(off_set) * time.Second
 	upper_bound := time.Duration(uint64(off_set)+config.Time) * time.Second
 
@@ -111,18 +111,18 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 			log_time := false
 			initial_time := time.Now()
 			latency := time.Duration(0)
-
+			
 			for {
 				operation := rand.Uint64() % uint64(2) // we can change the likelihood of this
 				if config.RandomServer {
-					serverId = uint64(rand.Uint64() % uint64((len(servers))))
-				} else if !config.RandomServer && index%config.SwitchServer == 0 {
-					serverId = serverId + 1%uint64((len(servers)))
+					serverId = uint64(rand.IntN(3) + 0)
 				} else if !config.RandomServer && operation == 0 {
 					serverId = readServer[rand.Int()%len(readServer)]
 				} else if !config.RandomServer && operation == 1 {
 					serverId = writeServer[rand.Int()%len(writeServer)]
 				}
+				// serverId = uint64(c.Id % 3)
+				// fmt.Println(serverId)
 
 				if !log_time && time.Since(initial_time) > lower_bound {
 					start_time = time.Now()
