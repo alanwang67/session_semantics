@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
-	"sort"
+	// "sort"
 	"time"
 
 	"github.com/alanwang67/session_semantics/protocol"
@@ -200,12 +200,9 @@ func sortedInsert(s []Operation, value Operation) []Operation {
 	if uint64(len(s)) == index {
 		return append(s, value)
 	} else {
-		// right := append([]Operation{value}, s[index:]...)
-		// result := append(s[:index], right...)
-		// return result
-		v := s[index]
-		s[index] = value 
-		return append(s, v)
+		right := append([]Operation{value}, s[index:]...)
+		result := append(s[:index], right...)
+		return result
 	}
 }
 
@@ -274,9 +271,9 @@ func receiveGossip(server Server, request Message) Server {
 		i = i + 1
 	}
 	
-	sort.Slice(server.PendingOperations, func(i int, j int) bool {
-		return compareVersionVector(server.PendingOperations[j].VersionVector, server.PendingOperations[i].VersionVector)
-	})
+	// sort.Slice(server.PendingOperations, func(i int, j int) bool {
+	// 	return compareVersionVector(server.PendingOperations[j].VersionVector, server.PendingOperations[i].VersionVector)
+	// })
 	
 	i = uint64(0)
 	// seen := make([]uint64, 0)
@@ -286,18 +283,15 @@ func receiveGossip(server Server, request Message) Server {
 			server.VectorClock = maxTS(server.VectorClock, server.PendingOperations[i].VersionVector)
 			server.PendingOperations = deleteAtIndexOperation(server.PendingOperations, i)
 			continue
-			// j := i 
-			// seen = append(seen, j)
+			// seen = append(seen, i)
 		}
 		i = i + 1
 	}
-	// fmt.Println(server.PendingOperations)
+
 	// var j = uint64(0)
 	// var output = make([]Operation, 0)
 	// for i < uint64(len(server.PendingOperations)) {
-	// 	if j == uint64(len(seen)) {
-	// 		output = append(output, server.PendingOperations[i:]...)
-	// 	} else if i == seen[j] {
+	// 	if j == uint64(len(seen)) && i == seen[j] {
 	// 		j = j + 1
 	// 	} else {
 	// 		output = append(output, server.PendingOperations[i])
