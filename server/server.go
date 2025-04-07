@@ -269,7 +269,7 @@ func receiveGossip(server Server, request Message) Server {
 			i = i + 1
 			continue 
 		} else {
-			server.PendingOperations = append(server.PendingOperations, request.S2S_Gossip_Operations[i])
+			server.PendingOperations = sortedInsert(server.PendingOperations, request.S2S_Gossip_Operations[i])
 		}
 		i = i + 1
 	}
@@ -279,29 +279,33 @@ func receiveGossip(server Server, request Message) Server {
 	})
 	
 	i = uint64(0)
-	seen := make([]uint64, 0)
+	// seen := make([]uint64, 0)
 	for i < uint64(len(server.PendingOperations)) {
 		if oneOffVersionVector(server.VectorClock, server.PendingOperations[i].VersionVector) {
 			server.OperationsPerformed = sortedInsert(server.OperationsPerformed, server.PendingOperations[i])
 			server.VectorClock = maxTS(server.VectorClock, server.PendingOperations[i].VersionVector)
-			seen = append(seen, i)
+			server.PendingOperations = deleteAtIndexOperation(server.PendingOperations, i)
+			continue
+			// j := i 
+			// seen = append(seen, j)
 		}
 		i = i + 1
 	}
-	
-	var j = uint64(0)
-	var output = make([]Operation, 0)
+	// fmt.Println(server.PendingOperations)
+	// var j = uint64(0)
+	// var output = make([]Operation, 0)
+	// for i < uint64(len(server.PendingOperations)) {
+	// 	if j == uint64(len(seen)) {
+	// 		output = append(output, server.PendingOperations[i:]...)
+	// 	} else if i == seen[j] {
+	// 		j = j + 1
+	// 	} else {
+	// 		output = append(output, server.PendingOperations[i])
+	// 	}
+	// 	i = i + 1
+	// }
 
-	for i < uint64(len(seen)) {
-		if i == seen[j] {
-			j = j + 1
-		} else {
-			output = append(output, server.PendingOperations[i])
-		}
-		i = i + 1
-	}
-
-	server.PendingOperations = output
+	// server.PendingOperations = output
 	return server
 }
 
