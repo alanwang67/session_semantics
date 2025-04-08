@@ -58,7 +58,6 @@ else
     create_session $SES $DIR       
     new_window $SES 1 $DIR
     new_window $SES 2 $DIR
-    new_window $SES 3 $DIR
 
     # Builtin flags in the above commands for the following actions
     # don't seem to work when run multiple times inside a bash script,
@@ -93,9 +92,9 @@ else
 
             run_command $SES 2 "./main $ct server 2 500"
 
-            sleep 20
+            sleep 10
 
-            cd ~/session_semantics; go run main.go $ct client $(( $1 * $i * 2 )) $2 $session true [] [] > ./generateGraphs/compareSessionSemantics/$session/$i
+            cd ~/session_semantics; go run main.go $ct client generateGraphs/compareSessionSemantics/config.json $(( 2 * $i * 2 )) 30 $session > ./generateGraphs/compareSessionSemantics/$session/$i
 
             ct=$(($ct + 1))
             echo 'finished'

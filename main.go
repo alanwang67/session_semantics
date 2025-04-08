@@ -6,6 +6,10 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"runtime/pprof"
+	// "fmt"
+	// "runtime/debug"
+	"time"
 
 	"github.com/alanwang67/session_semantics/client"
 	"github.com/alanwang67/session_semantics/protocol"
@@ -19,6 +23,12 @@ func processAddressString(address string, n uint64) string {
 }
 
 func main() {
+	// debug.SetGCPercent(-1)
+
+	f, _ := os.Create("profiler_" + os.Args[2] + os.Args[3])
+
+	pprof.StartCPUProfile(f)
+
 	config, _ := os.ReadFile("config.json")
 
 	portOffSet, _ := strconv.ParseUint(os.Args[1], 10, 64)
@@ -41,42 +51,39 @@ func main() {
 
 	switch os.Args[2] {
 	case "client":
-		// first arugment is path to program
-		if len(os.Args) < 8 {
-			log.Fatalf("usage: go run main.go _ client [threads] [numberOfOperations] [sessionSemantic] [randomServer] [writeServers] [readServers]")
-			return
+		fileLocation := os.Args[3]
+		clientConfig, _ := os.ReadFile(fileLocation)
+
+		var data map[string]interface{}
+		json.Unmarshal(clientConfig, &data)
+
+		threads, _ := strconv.ParseUint(os.Args[4], 10, 64)
+		time, _ := strconv.ParseUint(os.Args[5], 10, 64)
+		sessionSemantic, _ := strconv.ParseUint(os.Args[6], 10, 64)
+		randomServer := data["randomServer"].(bool)
+		roundRobin := data["roundRobin"].(bool)
+
+		var l []interface{}
+		l = data["writeServers"].([]interface{})
+		writeServer := make([]uint64, len(l))
+		for i, v := range l {
+			writeServer[i] = uint64(v.(float64))
 		}
 
-		threads, _ := strconv.ParseUint(os.Args[3], 10, 64)
-		numberOfOperations, _ := strconv.ParseUint(os.Args[4], 10, 64)
-		sessionSemantic, _ := strconv.ParseUint(os.Args[5], 10, 64)
-		randomServer, _ := strconv.ParseBool(os.Args[6])
-
-		workload := make([]uint64, numberOfOperations)
-		i := uint64(0)
-		for i < uint64(len(workload)) {
-			workload[i] = uint64(1)
-			i += 1
-		}
-
-		writeServer := make([]uint64, threads)
-		readServer := make([]uint64, threads)
-
-		i = uint64(0)
-		for i < uint64(threads) {
-			writeServer[i] = 0
-			readServer[i] = 0
-			i++
+		l = data["readServers"].([]interface{})
+		readServer := make([]uint64, len(l))
+		for i, v := range l {
+			readServer[i] = uint64(v.(float64))
 		}
 
 		conf := client.ConfigurationInfo{
-			Threads:            threads,
-			NumberOfOperations: numberOfOperations,
-			SessionSemantic:    sessionSemantic,
-			Workload:           workload,
-			RandomServer:       randomServer,
-			WriteServer:        writeServer,
-			ReadServer:         readServer,
+			Threads:         threads,
+			Time:            time,
+			SessionSemantic: sessionSemantic,
+			RandomServer:    randomServer,
+			WriteServer:     writeServer,
+			ReadServer:      readServer,
+			RoundRobin:      roundRobin,
 		}
 
 		client.Start(conf, servers)
@@ -89,7 +96,19 @@ func main() {
 
 		gossipInterval, _ := strconv.ParseUint(os.Args[4], 10, 64)
 
-		server.Start(server.New(id, servers[id], servers, gossipInterval))
+		go func() {
+			server.Start(server.New(id, servers[id], servers, gossipInterval))
+		}()
+
+		time.Sleep(60 * time.Second)
+		n := time.Now()
+
+		for {
+			if time.Since(n) > time.Duration(5*time.Second) {
+				break
+			}
+		}
+		pprof.StopCPUProfile()
 	default:
 		log.Fatalf("unknown command: %s", os.Args[1])
 	}

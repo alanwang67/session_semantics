@@ -43,21 +43,21 @@ run_command_right() {
 if [[ $* == *-help* ]]; then 
     echo Provide: initialThreads numberOfOperations 
 else 
-    tmux kill-server -t experiment 
+    ct=0
+    tmux kill-session -t experiment 
     
-    cd ~/Desktop/session_semantics
+    cd ~/session_semantics
     go build main.go 
 
-    cd ~/Desktop/session_semantics/generateGraphs/compareSessionSemantics
+    cd ~/session_semantics/generateGraphs/compareSessionSemantics
 
 
     SES="experiment"               
-    DIR="/home/alanwang/session_semantics/"   
+    DIR="~/session_semantics/"   
 
     create_session $SES $DIR       
     new_window $SES 1 $DIR
     new_window $SES 2 $DIR
-    new_window $SES 3 $DIR
 
     # Builtin flags in the above commands for the following actions
     # don't seem to work when run multiple times inside a bash script,
@@ -66,42 +66,42 @@ else
     sleep 1
 
     name_window $SES 0 server0 
-    # run_command $SES 0 "ssh srg02"
+    run_command $SES 0 "ssh srg02"
 
     name_window $SES 1 server1
-    # run_command $SES 1 "ssh srg03"
+    run_command $SES 1 "ssh srg03"
 
     name_window $SES 2 server2
-    # run_command $SES 2 "ssh srg04"
+    run_command $SES 2 "ssh srg04"
 
-    run_command $SES 0 "cd ~/Desktop/session_semantics"
-    run_command $SES 1 "cd ~/Desktop/session_semantics"
-    run_command $SES 2 "cd ~/Desktop/session_semantics"
+    run_command $SES 0 "cd ~/session_semantics"
+    run_command $SES 1 "cd ~/session_semantics"
+    run_command $SES 2 "cd ~/session_semantics"
 
     sleep 1
 
     for session in {0..5} 
     do
-        cd ~/Desktop/session_semantics/generateGraphs/compareSessionSemantics
+        cd ~/session_semantics/generateGraphs/compareSessionSemantics
         mkdir $session    
         for i in {1..5}
         do
-            run_command $SES 0 "./main server 0 500"
+            run_command $SES 0 "./main 0 server 0 500"
 
-            run_command $SES 1 "./main server 1 500"
+            run_command $SES 1 "./main 0 server 1 500"
 
-            run_command $SES 2 "./main server 2 500"
+            run_command $SES 2 "./main 0 server 2 500"
 
-            sleep 20
+            sleep 10
 
-            cd ~/Desktop/session_semantics; go run main.go client $(( $1 * $i * 2 )) $2 $session true [] [] > ./generateGraphs/compareSessionSemantics/$session/$i
+            cd ~/session_semantics; go run main.go 0 client generateGraphs/compareSessionSemantics/config.json $(( 2 * $i * 2 )) 30 $session > ./generateGraphs/compareSessionSemantics/$session/$i
 
+            ct=$(($ct + 1))
             echo 'finished'
+
             tmux send-keys -t server0 C-c
             tmux send-keys -t server1 C-c
             tmux send-keys -t server2 C-c
-
-            sleep 5
 
         done
     done

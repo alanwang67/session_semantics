@@ -1,0 +1,6 @@
+{
+	"randomServer": false,
+    "writeServers": [0],
+    "readServers": [1,2],
+    "roundRobin": false
+}
