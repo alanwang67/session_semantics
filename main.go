@@ -100,7 +100,7 @@ func main() {
 			server.Start(server.New(id, servers[id], servers, gossipInterval))
 		}()
 
-		time.Sleep(60 * time.Second)
+		time.Sleep(80 * time.Second)
 		n := time.Now()
 
 		for {

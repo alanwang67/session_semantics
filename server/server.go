@@ -80,9 +80,9 @@ func New(id uint64, self *protocol.Connection, peers []*protocol.Connection, gos
 		Clients:                sync.Map{},
 		UnsatisfiedRequests:    make([]Message, 0),
 		VectorClock:            make([]uint64, len(peers)),
-		OperationsPerformed:    make([]Operation, 0),
+		OperationsPerformed:    make([]Operation, 0, 30000000),
 		MyOperations:           make([]Operation, 0),
-		PendingOperations:      make([]Operation, 0),
+		PendingOperations:      make([]Operation, 0, 3000000),
 		GossipAcknowledgements: make([]uint64, len(peers)),
 		GossipInterval:         gossipInterval,
 	}
@@ -200,9 +200,11 @@ func sortedInsert(s []Operation, value Operation) []Operation {
 	if uint64(len(s)) == index {
 		return append(s, value)
 	} else {
-		right := append([]Operation{value}, s[index:]...)
-		result := append(s[:index], right...)
-		return result
+		s = append(s[:index+1], s[index:]...)
+		s[index] = value
+		// right := append([]Operation{value}, s[index:]...)
+		// result := append(s[:index], right...)
+		return s
 	}
 }
 
@@ -223,6 +225,14 @@ func getDataFromOperationLog(l []Operation) uint64 {
 		return l[len(l)-1].Data
 	}
 	return 0
+}
+
+func minTwoInts(x uint64, y uint64) uint64 {
+	if x > y {
+		return y
+	} else {
+		return x
+	}
 }
 
 func receiveGossip(server Server, request Message) Server {
