@@ -1,0 +1,5 @@
+threads 4
+total_operations: 1545540 ops
+average_time: 35 sec
+throughput: 44158 ops/sec
+latency: 102 us
