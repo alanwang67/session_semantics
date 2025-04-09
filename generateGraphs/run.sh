@@ -88,31 +88,37 @@ else
         for w in "${workload[@]}"
         do
             cd ~/session_semantics/generateGraphs/$name/
-            mkdir "$w"
+            mkdir workload_$w
             for session in {0..5} 
             do  
-                cd ~/session_semantics/generateGraphs/$name/$w
+                cd ~/session_semantics/generateGraphs/$name/workload_$w
                 mkdir $session    
-                for i in {1..5}
+                for run in {1..3}
                 do
-                    run_command $SES 0 "./main $ct server 0 500"
+                    cd ~/session_semantics/generateGraphs/$name/workload_$w/$session 
+                    mkdir run_$run 
+                    for i in {1..5}
+                    do
+                        run_command $SES 0 "./main $ct server 0 500"
 
-                    run_command $SES 1 "./main $ct server 1 500"
+                        run_command $SES 1 "./main $ct server 1 500"
 
-                    run_command $SES 2 "./main $ct server 2 500"
+                        run_command $SES 2 "./main $ct server 2 500"
 
-                    sleep 10
+                        sleep 10
 
-                    cd ~/session_semantics; ./main $ct client config_files/$name.json $(( $i * 8 )) 30 $session $w > ./generateGraphs/$name/$w/$session/$i
+                        cd ~/session_semantics; ./main $ct client config_files/$name.json $(( 2 + (($i - 1) * 5) )) 30 $session $w > ./generateGraphs/$name/workload_$w/$session/run_$run/$i
 
-                    ct=$(($ct + 1))
-                    echo 'finished'
+                        ct=$(($ct + 1))
 
-                    tmux send-keys -t server0 C-c
-                    tmux send-keys -t server1 C-c
-                    tmux send-keys -t server2 C-c
+                        tmux send-keys -t server0 C-c
+                        tmux send-keys -t server1 C-c
+                        tmux send-keys -t server2 C-c
 
-                done
+                        # cd ~/session_semantics/generateGraphs/; python3 plot.py 5 ./generateGraphs/$name/workload_$w/$session/run_$run
+
+                    done
+                done 
             done
         done 
     done

@@ -87,6 +87,7 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 	avg_time := float64(0)
 	total_latency := time.Duration(0 * time.Microsecond)
 	ops := uint64(0)
+	all_latencies := make([]*[]uint64, 0)
 
 	var wg sync.WaitGroup
 	var barrier sync.WaitGroup
@@ -98,12 +99,15 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 		j := i
 		go func(c *NClient) error {
 			index := uint64(0)
-			var serverId uint64
+			serverId := uint64(0)
+			latency_lst := make([]uint64, 10000000)
 			var start_time time.Time
 			var end_time time.Time
 			var operation_start uint64
 			var operation_end uint64
 			var operation uint64
+			var temp time.Duration 
+
 			r := rand.New(rand.NewPCG(1, 2))
 			z := rand.NewZipf(r, 3, 10, 100)
 			barrier.Done()
@@ -123,17 +127,17 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 
 				if config.PrimaryBackUpRoundRobin {
 					if operation == uint64(0) {
-						serverId = c.Id % 3
+						serverId = c.Id % uint64(len(servers)) // make this length of server 
 					} else if operation == uint64(1) {
 						serverId = uint64(0)
 					}
 				} else if config.PrimaryBackupRandom {
-					if operation == uint64(0) {
-						serverId = uint64(rand.IntN(3))
+					if operation == uint64(0) && (index%config.SwitchServer == 0) { // make this use the SwitchServer paramter 
+						serverId = uint64(rand.IntN(3)) 
 					} else if operation == uint64(1) {
 						serverId = uint64(0)
 					}
-				} else if config.GossipRandom { // && (index%config.SwitchServer == 0) 
+				} else if config.GossipRandom && (index%config.SwitchServer == 0) { // init serverId 
 					serverId = uint64(rand.IntN(3))
 				} else if config.PinnedRoundRobin {
 					serverId = c.Id % 3
@@ -169,8 +173,10 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 					fmt.Print(err)
 					return err
 				}
-
-				latency = latency + (time.Since(sent_time))
+				
+				temp = (time.Since(sent_time))
+				latency = latency + temp 
+				latency_lst = append(latency_lst, uint64(temp.Microseconds()))
 
 				handler(c, 2, 0, 0, m)
 				index++
@@ -185,6 +191,7 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 			}
 			ops += operation_end - operation_start
 			total_latency = total_latency + latency
+			all_latencies = append(all_latencies, &latency_lst)
 			l.Unlock()
 			return nil
 		}(NClients[j])
@@ -199,6 +206,7 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 	fmt.Println("average_time:", int(avg_time), "sec")
 	fmt.Println("throughput:", int(float64(ops)/(avg_time)), "ops/sec")
 	fmt.Println("latency:", int(float64(total_latency.Microseconds())/float64(ops)), "us")
+	// fmt.Println("latency_list:", all_latencies)
 
 	time.Sleep(10 * time.Second)
 

@@ -1,0 +1,6 @@
+{8 5 30 1000 50 false false false true}
+threads 8
+total_operations: 2295500 ops
+average_time: 35 sec
+throughput: 65220 ops/sec
+latency: 137 us

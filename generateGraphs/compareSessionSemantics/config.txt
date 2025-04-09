@@ -16,3 +16,12 @@
 // 50 50 
 // 5 95
 
+// latency list + take the average, python library
+// change everything to 24 threads max and increment by 3 ish 
+// generate pdf format
+// make size 3.3 inch width by 1.3 inch height 
+// capitalize L and t for latency throughput and change the unit to be k & change throughput to k ops 
+// make throughput and latency start with 0, start with baseline of maybe 2 threads
+// change legend to be abbreviatation 
+// ev, mr, rmw, mw, wfr, causal
+// causal to cc 

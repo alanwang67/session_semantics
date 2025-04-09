@@ -1,6 +1,5 @@
 {
-	"SwitchServer": 1000000,
-    "Workload": 95, 
+	"SwitchServer": 10000,
     "PrimaryBackUpRoundRobin": false,
     "PrimaryBackupRandom": true, 
     "GossipRandom": false, 
