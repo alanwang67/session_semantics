@@ -12,17 +12,18 @@ import (
 	"github.com/alanwang67/session_semantics/server"
 )
 
-// to pin a server choose the same one element array for both readServer and writeServer
-// every thread has the same read and write servers
 type ConfigurationInfo struct {
 	Threads         uint64
 	SessionSemantic uint64
 	Time            uint64
-	RandomServer    bool
-	WriteServer     []uint64 // determines which servers we can write to
-	ReadServer      []uint64 // determines which servers we can read from
-	// SwitchServer    uint64
+	WriteServer     []uint64 
+	ReadServer      []uint64 
+	SwitchServer    uint64
 	RoundRobin 		bool
+	Workload 		uint64 
+	PrimaryBackUpRoundRobin bool 
+	PrimaryBackupRandom bool 
+	GossipRandom bool 
 }
 
 type NClient struct {

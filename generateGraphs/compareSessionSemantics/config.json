@@ -1,7 +1,19 @@
 {
-	"randomServer": true,
     "writeServers": [0],
     "readServers": [0],
 	"switchServer": 100000000000,
     "roundRobin": true
+
 }
+
+// primary back up (primary is pinned forall clients) and then round robin for the rest
+
+// gossip after every 1000 clients, random?? 
+
+// pinned round robin, 
+
+// primary back up, with no pinning so random servers for reads
+// 95, 5
+// 50 50 
+// 5 95
+
