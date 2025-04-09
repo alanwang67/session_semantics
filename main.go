@@ -2,14 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
 	"strings"
-	// "runtime/pprof"
-	// "fmt"
-	// "runtime/debug"
-	// "time"
 
 	"github.com/alanwang67/session_semantics/client"
 	"github.com/alanwang67/session_semantics/protocol"
@@ -23,17 +20,13 @@ func processAddressString(address string, n uint64) string {
 }
 
 func main() {
-	// debug.SetGCPercent(-1)
-
-	// f, _ := os.Create("profiler_" + os.Args[2] + os.Args[3])
-
-	// pprof.StartCPUProfile(f)
 
 	config, _ := os.ReadFile("config.json")
 
 	portOffSet, _ := strconv.ParseUint(os.Args[1], 10, 64)
 
 	var data map[string]interface{}
+
 	json.Unmarshal(config, &data)
 
 	servers := make([]*protocol.Connection, len(data["servers"].([]interface{})))
@@ -60,32 +53,25 @@ func main() {
 		threads, _ := strconv.ParseUint(os.Args[4], 10, 64)
 		time, _ := strconv.ParseUint(os.Args[5], 10, 64)
 		sessionSemantic, _ := strconv.ParseUint(os.Args[6], 10, 64)
-		randomServer := data["randomServer"].(bool)
-		roundRobin := data["roundRobin"].(bool)
-
-		var l []interface{}
-		l = data["writeServers"].([]interface{})
-		writeServer := make([]uint64, len(l))
-		for i, v := range l {
-			writeServer[i] = uint64(v.(float64))
-		}
-
-		l = data["readServers"].([]interface{})
-		readServer := make([]uint64, len(l))
-		for i, v := range l {
-			readServer[i] = uint64(v.(float64))
-		}
+		switchServer := uint64(data["SwitchServer"].(float64))
+		workload := uint64(data["Workload"].(float64))
+		primaryBackUpRoundRobin := data["PrimaryBackUpRoundRobin"].(bool)
+		primaryBackupRandom := data["PrimaryBackupRandom"].(bool)
+		gossipRandom := data["GossipRandom"].(bool)
+		pinnedRoundRobin := data["PinnedRoundRobin"].(bool)
 
 		conf := client.ConfigurationInfo{
-			Threads:         threads,
-			Time:            time,
-			SessionSemantic: sessionSemantic,
-			RandomServer:    randomServer,
-			WriteServer:     writeServer,
-			ReadServer:      readServer,
-			RoundRobin:      roundRobin,
+			Threads:                 threads,
+			SessionSemantic:         sessionSemantic,
+			Time:                    time,
+			SwitchServer:            switchServer,
+			Workload:                workload,
+			PrimaryBackUpRoundRobin: primaryBackUpRoundRobin,
+			PrimaryBackupRandom:     primaryBackupRandom,
+			GossipRandom:            gossipRandom,
+			PinnedRoundRobin:        pinnedRoundRobin,
 		}
-
+		fmt.Println(conf)
 		client.Start(conf, servers)
 	case "server":
 		if len(os.Args) < 4 {
@@ -97,20 +83,6 @@ func main() {
 		gossipInterval, _ := strconv.ParseUint(os.Args[4], 10, 64)
 
 		server.Start(server.New(id, servers[id], servers, gossipInterval))
-
-		// go func() {
-		// 	server.Start(server.New(id, servers[id], servers, gossipInterval))
-		// }()
-
-		// time.Sleep(80 * time.Second)
-		// n := time.Now()
-
-		// for {
-		// 	if time.Since(n) > time.Duration(5*time.Second) {
-		// 		break
-		// 	}
-		// }
-		// pprof.StopCPUProfile()
 	default:
 		log.Fatalf("unknown command: %s", os.Args[1])
 	}

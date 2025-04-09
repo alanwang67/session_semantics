@@ -80,29 +80,35 @@ else
 
     sleep 1
 
-    for session in {0..5} 
+    declare -a arr=("GossipRandom" "PinnedRoundRobin" "PrimaryBackupRandom" "PrimaryBackUpRoundRobin")
+    for name in "${arr[@]}"
     do
-        cd ~/session_semantics/generateGraphs/compareSessionSemantics
-        mkdir $session    
-        for i in {1..5}
+        for session in {0..5} 
         do
-            run_command $SES 0 "./main $ct server 0 500"
+            echo $name $session
+            # cd ~/session_semantics/generateGraphs/GossipRandom
+            # mkdir $session    
+            # for i in {1..5}
+            # do
+            #     run_command $SES 0 "./main $ct server 0 500"
 
-            run_command $SES 1 "./main $ct server 1 500"
+            #     run_command $SES 1 "./main $ct server 1 500"
 
-            run_command $SES 2 "./main $ct server 2 500"
+            #     run_command $SES 2 "./main $ct server 2 500"
 
-            sleep 10
+            #     sleep 10
 
-            cd ~/session_semantics; go run main.go $ct client generateGraphs/compareSessionSemantics/config.json $(( $i * 2 )) 30 $session > ./generateGraphs/compareSessionSemantics/$session/$i
+            #     cd ~/session_semantics; ./main $ct client config_files/$name.json $(( $i * 8 )) 30 $session > ./generateGraphs/$name/$session/$i
 
-            ct=$(($ct + 1))
-            echo 'finished'
+            #     ct=$(($ct + 1))
+            #     echo 'finished'
 
-            tmux send-keys -t server0 C-c
-            tmux send-keys -t server1 C-c
-            tmux send-keys -t server2 C-c
+            #     tmux send-keys -t server0 C-c
+            #     tmux send-keys -t server1 C-c
+            #     tmux send-keys -t server2 C-c
 
+            # done
         done
     done
+    
 fi

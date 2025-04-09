@@ -13,17 +13,15 @@ import (
 )
 
 type ConfigurationInfo struct {
-	Threads         uint64
-	SessionSemantic uint64
-	Time            uint64
-	WriteServer     []uint64 
-	ReadServer      []uint64 
-	SwitchServer    uint64
-	RoundRobin 		bool
-	Workload 		uint64 
-	PrimaryBackUpRoundRobin bool 
-	PrimaryBackupRandom bool 
-	GossipRandom bool 
+	Threads                 uint64
+	SessionSemantic         uint64
+	Time                    uint64
+	SwitchServer            uint64
+	Workload                uint64
+	PrimaryBackUpRoundRobin bool
+	PrimaryBackupRandom     bool
+	GossipRandom            bool
+	PinnedRoundRobin        bool
 }
 
 type NClient struct {
@@ -98,14 +96,16 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 	i = uint64(0)
 	for i < uint64(len(NClients)) {
 		j := i
-		go func(c *NClient, writeServer []uint64, readServer []uint64) error {
+		go func(c *NClient) error {
 			index := uint64(0)
 			var serverId uint64
 			var start_time time.Time
 			var end_time time.Time
 			var operation_start uint64
 			var operation_end uint64
-
+			var operation uint64
+			r := rand.New(rand.NewPCG(1, 2))
+			z := rand.NewZipf(r, 3, 10, 100)
 			barrier.Done()
 			barrier.Wait()
 			defer wg.Done()
@@ -113,19 +113,31 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 			log_time := false
 			initial_time := time.Now()
 			latency := time.Duration(0)
-			
+
 			for {
-				// operation := rand.Uint64() % uint64(2) // we can change the likelihood of this
-				operation := uint64(1)
-				if config.RandomServer {
-					serverId = uint64(rand.IntN(3) + 0)
-				} else if !config.RandomServer && operation == 0 {
-					serverId = readServer[rand.Int()%len(readServer)]
-				} else if !config.RandomServer && operation == 1 {
-					serverId = writeServer[rand.Int()%len(writeServer)]
-				} else if !config.RandomServer && config.RoundRobin {
-					serverId = uint64(c.Id % 3)
-				} 
+				if uint64(rand.IntN(99)) < config.Workload {
+					operation = uint64(1)
+				} else {
+					operation = uint64(0)
+				}
+
+				if config.PrimaryBackUpRoundRobin {
+					if operation == uint64(0) {
+						serverId = c.Id % 3
+					} else if operation == uint64(1) {
+						serverId = uint64(0)
+					}
+				} else if config.PrimaryBackupRandom {
+					if operation == uint64(0) {
+						serverId = uint64(rand.IntN(3))
+					} else if operation == uint64(1) {
+						serverId = uint64(0)
+					}
+				} else if config.GossipRandom && (index%config.SwitchServer == 0) {
+					serverId = uint64(rand.IntN(3))
+				} else if config.PinnedRoundRobin {
+					serverId = c.Id % 3
+				}
 
 				if !log_time && time.Since(initial_time) > lower_bound {
 					start_time = time.Now()
@@ -138,7 +150,7 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 					break
 				}
 
-				v := uint64(rand.Int64())
+				v := z.Uint64()
 
 				outGoingMessage := handler(c, operation, serverId, v, server.Message{})
 
@@ -171,12 +183,11 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 			} else {
 				avg_time = (avg_time + (end_time.Sub(start_time).Seconds())) / 2
 			}
-			// fmt.Println(c.Id, end_time.Sub(start_time).Seconds())
 			ops += operation_end - operation_start
 			total_latency = total_latency + latency
 			l.Unlock()
 			return nil
-		}(NClients[j], config.WriteServer, config.ReadServer)
+		}(NClients[j])
 
 		i += 1
 	}

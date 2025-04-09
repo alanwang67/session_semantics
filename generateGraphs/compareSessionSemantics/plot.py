@@ -5,6 +5,7 @@ import copy
 
 data = {}
 runs = int(sys.argv[1])
+file = (sys.argv[2])
 
 def getNumber(s):
     output = ""
@@ -24,10 +25,10 @@ for session in range(0, 6):
     x = []
     y = []
     for i in range(1, runs+1):
-        f = open(str(session) + "/" + str(i), "r")
+        f = open(file + "/" + str(session) + "/" + str(i), "r")
         contents = f.read().splitlines()
-        throughput = getNumber(contents[2])
-        latency = getNumber(contents[3])
+        throughput = getNumber(contents[3])
+        latency = getNumber(contents[4])
         x.append(int(throughput))
         y.append(int(latency))
 
