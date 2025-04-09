@@ -133,7 +133,7 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 					} else if operation == uint64(1) {
 						serverId = uint64(0)
 					}
-				} else if config.GossipRandom && (index%config.SwitchServer == 0) {
+				} else if config.GossipRandom { // && (index%config.SwitchServer == 0) 
 					serverId = uint64(rand.IntN(3))
 				} else if config.PinnedRoundRobin {
 					serverId = c.Id % 3
