@@ -3,5 +3,5 @@
     "writeServers": [0],
     "readServers": [0],
 	"switchServer": 100000000000,
-    "roundRobin": false
+    "roundRobin": true
 }

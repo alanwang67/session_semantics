@@ -6,10 +6,10 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"runtime/pprof"
+	// "runtime/pprof"
 	// "fmt"
 	// "runtime/debug"
-	"time"
+	// "time"
 
 	"github.com/alanwang67/session_semantics/client"
 	"github.com/alanwang67/session_semantics/protocol"
@@ -25,9 +25,9 @@ func processAddressString(address string, n uint64) string {
 func main() {
 	// debug.SetGCPercent(-1)
 
-	f, _ := os.Create("profiler_" + os.Args[2] + os.Args[3])
+	// f, _ := os.Create("profiler_" + os.Args[2] + os.Args[3])
 
-	pprof.StartCPUProfile(f)
+	// pprof.StartCPUProfile(f)
 
 	config, _ := os.ReadFile("config.json")
 
@@ -96,19 +96,21 @@ func main() {
 
 		gossipInterval, _ := strconv.ParseUint(os.Args[4], 10, 64)
 
-		go func() {
-			server.Start(server.New(id, servers[id], servers, gossipInterval))
-		}()
+		server.Start(server.New(id, servers[id], servers, gossipInterval))
 
-		time.Sleep(80 * time.Second)
-		n := time.Now()
+		// go func() {
+		// 	server.Start(server.New(id, servers[id], servers, gossipInterval))
+		// }()
 
-		for {
-			if time.Since(n) > time.Duration(5*time.Second) {
-				break
-			}
-		}
-		pprof.StopCPUProfile()
+		// time.Sleep(80 * time.Second)
+		// n := time.Now()
+
+		// for {
+		// 	if time.Since(n) > time.Duration(5*time.Second) {
+		// 		break
+		// 	}
+		// }
+		// pprof.StopCPUProfile()
 	default:
 		log.Fatalf("unknown command: %s", os.Args[1])
 	}

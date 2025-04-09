@@ -80,3 +80,5 @@ func main() {
 	fmt.Println(zipf_table)
 	fmt.Println(gen_zipf_blk(zipf_table))
 }
+
+// theta value - 0.99

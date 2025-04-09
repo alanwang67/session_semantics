@@ -80,9 +80,9 @@ func New(id uint64, self *protocol.Connection, peers []*protocol.Connection, gos
 		Clients:                sync.Map{},
 		UnsatisfiedRequests:    make([]Message, 0),
 		VectorClock:            make([]uint64, len(peers)),
-		OperationsPerformed:    make([]Operation, 0, 30000000),
+		OperationsPerformed:    make([]Operation, 0, 100000),
 		MyOperations:           make([]Operation, 0),
-		PendingOperations:      make([]Operation, 0, 3000000),
+		PendingOperations:      make([]Operation, 0, 100000),
 		GossipAcknowledgements: make([]uint64, len(peers)),
 		GossipInterval:         gossipInterval,
 	}
@@ -200,11 +200,11 @@ func sortedInsert(s []Operation, value Operation) []Operation {
 	if uint64(len(s)) == index {
 		return append(s, value)
 	} else {
-		s = append(s[:index+1], s[index:]...)
-		s[index] = value
-		// right := append([]Operation{value}, s[index:]...)
-		// result := append(s[:index], right...)
-		return s
+		// s = append(s[:index+1], s[index:]...)
+		// s[index] = value
+		right := append([]Operation{value}, s[index:]...)
+		result := append(s[:index], right...)
+		return result
 	}
 }
 
@@ -235,6 +235,26 @@ func minTwoInts(x uint64, y uint64) uint64 {
 	}
 }
 
+func insertionSort(l []Operation) {
+	var j uint64 
+	var temp Operation
+	var i = uint64(1)
+	for i < uint64(len(l)) {
+		if lexicographicCompare(l[i-1].VersionVector, l[i].VersionVector) {
+			j = i - 1
+			temp = l[i]
+			for j >= 0 && lexicographicCompare(l[j].VersionVector, temp.VersionVector) {
+				l[j+1] = l[j]
+				if j == 0 { // required since we are using uint64 
+					break 
+				}
+				j = j - 1
+			}
+		}
+		i = i + 1
+	}
+}
+
 func receiveGossip(server Server, request Message) Server {
 	if len(request.S2S_Gossip_Operations) == 0 {
 		return server
@@ -253,7 +273,9 @@ func receiveGossip(server Server, request Message) Server {
 		}
 		i = i + 1
 	}
-	
+
+	// insertionSort(server.PendingOperations)
+
 	i = uint64(0)
 	seen := make([]uint64, 0)
 	for i < uint64(len(server.PendingOperations)) {
@@ -265,10 +287,13 @@ func receiveGossip(server Server, request Message) Server {
 		i = i + 1
 	}
 
+	// insertionSort(server.OperationsPerformed)
+
+	i = uint64(0)
 	var j = uint64(0)
 	var output = make([]Operation, 0)
 	for i < uint64(len(server.PendingOperations)) {
-		if j == uint64(len(seen)) && i == seen[j] {
+		if j < uint64(len(seen)) && i == seen[j] {
 			j = j + 1
 		} else {
 			output = append(output, server.PendingOperations[i])
@@ -547,7 +572,7 @@ func Start(s *NServer) error {
 				}
 
 				s.mu.Lock()
-
+				// fmt.Println(m)
 				if m.MessageType == 0 {
 					_, ok := s.Clients.Load(m.C2S_Client_Id)
 					if !ok {

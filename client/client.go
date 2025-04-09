@@ -170,7 +170,7 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 			} else {
 				avg_time = (avg_time + (end_time.Sub(start_time).Seconds())) / 2
 			}
-			fmt.Println(c.Id, end_time.Sub(start_time).Seconds())
+			// fmt.Println(c.Id, end_time.Sub(start_time).Seconds())
 			ops += operation_end - operation_start
 			total_latency = total_latency + latency
 			l.Unlock()
