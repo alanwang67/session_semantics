@@ -25,3 +25,7 @@
 // change legend to be abbreviatation 
 // ev, mr, rmw, mw, wfr, causal
 // causal to cc 
+
+// 10 second run with 5 to 50 workload, power of 2 to 256, 
+// kill & then run 
+// change clients, to get killed 

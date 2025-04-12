@@ -27,13 +27,13 @@ for session in range(0, 6):
     for i in range(1, runs+1):
         f = open(file + "/" + str(session) + "/" + str(i), "r")
         contents = f.read().splitlines()
-        throughput = getNumber(contents[3])
-        latency = getNumber(contents[4])
-        x.append(int(throughput))
+        throughput = getNumber(contents[4])
+        latency = getNumber(contents[5])
+        x.append(int(throughput)/1000)
         y.append(int(latency))
 
-        minnx = min(int(throughput), minnx)
-        maxx = max(int(throughput), maxx)
+        # minnx = min(int(throughput), minnx)
+        # maxx = max(int(throughput), maxx)
 
         miny = min(int(latency), miny)
         maxy = max(int(latency), maxy)
@@ -50,25 +50,28 @@ for session in range(0, 6):
         data["read your writes"] = [x[:], y[:]]
     if session == 5:
         data["causal"] = [x[:], y[:]]
-    
-plt.xlabel('throughput (ops/sec)')
-plt.ylabel('latency (ms)')
-plt.axis([minnx,maxx, miny,maxy])
+
+plt.figure(figsize=(3.5, 1.3), dpi=300)
+plt.xlabel('Throughput (kops/sec)')
+plt.ylabel('Latency (us)')
+# plt.axis([minnx,maxx, miny,maxy])
 
 # print(data)
 for session in data:
     x,y = data[session]
     print(x,y)
     if session == "eventual":
-        plt.plot(x, y, marker='o', color='b', label = session)
+        plt.plot(x, y, marker='o', color='b', label = "ev")
     if session == "writes follow reads":
-        plt.plot(x, y, marker='*', color='r', label = session)
+        plt.plot(x, y, marker='*', color='r', label = "wfr")
     if session == "monotonic writes":
-        plt.plot(x, y, marker='h', color='g', label = session)
+        plt.plot(x, y, marker='h', color='g', label = "mw")
     if session == "read your writes":
-        plt.plot(x, y, marker='.', color='y', label = session)
+        plt.plot(x, y, marker='.', color='y', label = "ryw")
+    if session == "monotonic reads":
+        plt.plot(x, y, label = "mr")
     if session == "causal":
-        plt.plot(x, y, marker='x', color='m', label = session)
+        plt.plot(x, y, marker='x', color='m', label = "cc")
 
 # print(minnx,maxx, miny,maxy)
 # print(0,maxx)
@@ -76,9 +79,9 @@ for session in data:
 # plt.yticks(range(miny,maxy))
 # plt.axis((minnx, maxx, miny, maxy))
 # plt.xlim([0,50])
-plt.legend()
+plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
-plt.savefig('tl.png')
+plt.savefig('tl.png',bbox_inches='tight')
 
 
 

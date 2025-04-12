@@ -93,31 +93,42 @@ else
             do  
                 cd ~/session_semantics/generateGraphs/$name/workload_$w
                 mkdir $session    
-                for run in {1..3}
+                # for run in {1..3}
+                # do
+                    # cd ~/session_semantics/generateGraphs/$name/workload_$w/$session 
+                    # mkdir run_$run 
+                for i in {1..7}
                 do
-                    cd ~/session_semantics/generateGraphs/$name/workload_$w/$session 
-                    mkdir run_$run 
-                    for i in {1..5}
-                    do
-                        run_command $SES 0 "./main $ct server 0 500"
+                    run_command $SES 0 "./main $ct server 0 500"
 
-                        run_command $SES 1 "./main $ct server 1 500"
+                    run_command $SES 1 "./main $ct server 1 500"
 
-                        run_command $SES 2 "./main $ct server 2 500"
+                    run_command $SES 2 "./main $ct server 2 500"
 
-                        sleep 10
+                    sleep 10
 
-                        cd ~/session_semantics; ./main $ct client config_files/$name.json $(( 2 + (($i - 1) * 5) )) 30 $session $w > ./generateGraphs/$name/workload_$w/$session/run_$run/$i
+                    if [ "$name" = "GossipRandom" ]; then
+                        cd ~/session_semantics; ./main $ct client config_files/$name.json $(( 1 + (($i - 1) * 1) )) 30 $session $w > ./generateGraphs/$name/workload_$w/$session/$i
+                    fi
+                    
+                    if [ "$name" = "PrimaryBackupRandom" ]; then
+                        cd ~/session_semantics; ./main $ct client config_files/$name.json $(( 1 + (($i - 1) * 1) )) 30 $session $w > ./generateGraphs/$name/workload_$w/$session/$i
+                    fi
+                    if [ "$name" = "PinnedRoundRobin" ]; then
+                        cd ~/session_semantics; ./main $ct client config_files/$name.json $(( 2 + (($i - 1) * 2) )) 30 $session $w > ./generateGraphs/$name/workload_$w/$session/$i
+                    fi
+                    if [ "$name" = "PrimaryBackUpRoundRobin" ]; then
+                        cd ~/session_semantics; ./main $ct client config_files/$name.json $(( 2 + (($i - 1) * 2) )) 30 $session $w > ./generateGraphs/$name/workload_$w/$session/$i
+                    fi
+                    ct=$(($ct + 1))
 
-                        ct=$(($ct + 1))
+                    tmux send-keys -t server0 C-c
+                    tmux send-keys -t server1 C-c
+                    tmux send-keys -t server2 C-c
 
-                        tmux send-keys -t server0 C-c
-                        tmux send-keys -t server1 C-c
-                        tmux send-keys -t server2 C-c
+                    # cd ~/session_semantics/generateGraphs/; python3 plot.py 5 ./generateGraphs/$name/workload_$w/$session/
 
-                        # cd ~/session_semantics/generateGraphs/; python3 plot.py 5 ./generateGraphs/$name/workload_$w/$session/run_$run
-
-                    done
+                    # done
                 done 
             done
         done 
