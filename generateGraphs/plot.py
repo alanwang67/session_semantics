@@ -100,16 +100,30 @@ def plotGraph(p, file):
             if session == o and session == "monotonic reads":
                 p.plot(x, y, marker='2', color='c', label = "MR")
             if session == o and session == "causal":
-                p.plot(x, y, marker='x', color='m', label = "C")
-    legend = p.legend(prop={'size': 3.5}, markerscale=0.50, handletextpad=0.5, loc='upper left', ncol=2)
-                    #   ncol=2) 
+                p.plot(x, y, marker='x', color='m', label = "CC")
+    if get_PB_Gossip(file) == "Primary-Backup":
+        x = []
+        y = []
+        for i in range(1,11):
+            f = open("Redis" + "/" + str(i), "r") 
+            contents = f.read().splitlines()
+            throughput = getNumber(contents[0])
+            latency = getNumber(contents[1])
+            x.append(int(throughput)/1000)
+            y.append(int(latency))
+        p.plot(x,y, marker='3', color='k', label = "REDIS")
+    else:
+        p.axvline(x = int(11707/1000), color = 'black', label = 'CHAPAR', linestyle='--')
+            
+               
+    legend = p.legend(prop={'size': 4.8}, markerscale=0.5, handletextpad=0.5, loc='upper left', ncol=2, columnspacing=0.48)
     legend.get_frame().set_alpha(0)
 
 
     # p.tight_layout()
 
     # p.title(get_PB_Gossip(file1))
-    p.set(xlim=(0, 278), ylim=(0, 518))
+    p.set(xlim=(0, 278), ylim=(0, 680))
     p.set_title(get_PB_Gossip(file), fontsize = 8.0)
 
 if op == 0:
@@ -172,22 +186,18 @@ if op == 0:
     plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
     plt.savefig(file + 'tl.png', bbox_inches='tight')
-else: 
+else:
+    # plt.rcParams["font.family"] = "Times New Roman"    
     plt.rcParams['figure.dpi'] = 300
     plt.rcParams['savefig.dpi'] = 300
-    plt.rc('font', size=3.8)
+    plt.rc('font', size=4.8)
     plt.xticks(fontsize = 10)
     plt.yticks(fontsize = 10)
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(3.3, 1.3),
                          tight_layout=True)
-    # f = findfont(FontProperties(family=['Helvetica']))
-    # font = {'family' : f,
-    #     'weight' : 'bold',
-    #     'size'   : 22}
-    matplotlib.rc('font', family='sans-serif') 
-    matplotlib.rc('font', serif='Helvetica Neue') 
-    matplotlib.rc('text', usetex='false') 
+
+
     # matplotlib.rc('font', **font)
 
     file1 = (sys.argv[2])
@@ -207,3 +217,4 @@ else:
 
     file_name = get_write_percentage(file1)
     plt.savefig(directory + "/" + str(file_name) + get_PB_Gossip(file1) + "write" + '.pdf', format='pdf', dpi=1200)
+
