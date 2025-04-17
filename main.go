@@ -7,6 +7,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"runtime/debug"
+	// "runtime/pprof"
+	// "time"
 
 	"github.com/alanwang67/session_semantics/client"
 	"github.com/alanwang67/session_semantics/protocol"
@@ -20,6 +23,13 @@ func processAddressString(address string, n uint64) string {
 }
 
 func main() {
+	debug.SetGCPercent(-1)
+	// fmt.Println("We have disabled the GC!")
+
+	// f, _ := os.Create("cpu.pprof" + os.Args[2] + os.Args[3])
+
+	// pprof.StartCPUProfile(f)
+	// defer pprof.StopCPUProfile()
 
 	config, _ := os.ReadFile("config.json")
 
@@ -71,7 +81,7 @@ func main() {
 			GossipRandom:            gossipRandom,
 			PinnedRoundRobin:        pinnedRoundRobin,
 		}
-		fmt.Println(conf)
+		fmt.Printf("%+v\n", conf)
 		client.Start(conf, servers)
 	case "server":
 		if len(os.Args) < 4 {
@@ -82,7 +92,21 @@ func main() {
 
 		gossipInterval, _ := strconv.ParseUint(os.Args[4], 10, 64)
 
+		// go func() {
 		server.Start(server.New(id, servers[id], servers, gossipInterval))
+		// }()
+
+		// time.Sleep(60 * time.Second)
+		// n := time.Now()
+
+		// for {
+		// 	if time.Since(n) > time.Duration(5*time.Second) {
+		// 		break
+		// 	}
+		// }
+
+		// pprof.StopCPUProfile()
+		// server.Start(server.New(id, servers[id], servers, gossipInterval))
 	default:
 		log.Fatalf("unknown command: %s", os.Args[1])
 	}

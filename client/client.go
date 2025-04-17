@@ -10,6 +10,7 @@ import (
 
 	"github.com/alanwang67/session_semantics/protocol"
 	"github.com/alanwang67/session_semantics/server"
+	// "github.com/montanaflynn/stats"
 )
 
 type ConfigurationInfo struct {
@@ -48,6 +49,7 @@ func New(id uint64, sessionSemantic uint64, servers []*protocol.Connection) *NCl
 
 	for i < uint64(len(servers)) {
 		c, err := net.Dial(servers[i].Network, servers[i].Address)
+		// err = c.SetDeadline(time.Now().Add(35 * time.Second))
 
 		if err != nil {
 			fmt.Println(err)
@@ -87,7 +89,6 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 	avg_time := float64(0)
 	total_latency := time.Duration(0 * time.Microsecond)
 	ops := uint64(0)
-	all_latencies := make([]*[]uint64, 0)
 
 	var wg sync.WaitGroup
 	var barrier sync.WaitGroup
@@ -100,7 +101,8 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 		go func(c *NClient) error {
 			index := uint64(0)
 			serverId := uint64(0)
-			latency_lst := make([]uint64, 10000000)
+			readServerId := uint64(0)
+			writeServerId := uint64(0)
 			var start_time time.Time
 			var end_time time.Time
 			var operation_start uint64
@@ -127,20 +129,24 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 
 				if config.PrimaryBackUpRoundRobin {
 					if operation == uint64(0) {
-						serverId = c.Id % uint64(len(servers)) // make this length of server 
+						readServerId = c.Id % uint64(len(servers)) 
 					} else if operation == uint64(1) {
-						serverId = uint64(0)
+						writeServerId = uint64(0)
 					}
 				} else if config.PrimaryBackupRandom {
-					if operation == uint64(0) && (index%config.SwitchServer == 0) { // make this use the SwitchServer paramter 
-						serverId = uint64(rand.IntN(3)) 
-					} else if operation == uint64(1) {
-						serverId = uint64(0)
+					if (index%config.SwitchServer == 0) {
+						readServerId = uint64(rand.IntN(3)) 
+					} 
+					if operation == uint64(1) {
+						writeServerId = uint64(0)
 					}
-				} else if config.GossipRandom && (index%config.SwitchServer == 0) { // init serverId 
-					serverId = uint64(rand.IntN(3))
+				} else if config.GossipRandom && (index%config.SwitchServer == 0) {
+					v := uint64(rand.IntN(3))
+					writeServerId = v
+					readServerId = v 
 				} else if config.PinnedRoundRobin {
-					serverId = c.Id % 3
+					readServerId = c.Id % 3
+					writeServerId = c.Id % 3
 				}
 
 				if !log_time && time.Since(initial_time) > lower_bound {
@@ -162,21 +168,26 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 
 				sent_time := time.Now()
 
+				if operation == uint64(0) {
+					serverId = readServerId
+				} else {
+					serverId = writeServerId
+				}
+
 				err := c.ServerEncoder[serverId].Encode(&outGoingMessage)
 				if err != nil {
 					fmt.Print(err)
-					return err
+					// return err
 				}
 
 				err = c.ServerDecoders[serverId].Decode(&m)
 				if err != nil {
 					fmt.Print(err)
-					return err
+					// return err
 				}
 				
 				temp = (time.Since(sent_time))
 				latency = latency + temp 
-				latency_lst = append(latency_lst, uint64(temp.Microseconds()))
 
 				handler(c, 2, 0, 0, m)
 				index++
@@ -191,7 +202,6 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 			}
 			ops += operation_end - operation_start
 			total_latency = total_latency + latency
-			all_latencies = append(all_latencies, &latency_lst)
 			l.Unlock()
 			return nil
 		}(NClients[j])
@@ -206,7 +216,6 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 	fmt.Println("average_time:", int(avg_time), "sec")
 	fmt.Println("throughput:", int(float64(ops)/(avg_time)), "ops/sec")
 	fmt.Println("latency:", int(float64(total_latency.Microseconds())/float64(ops)), "us")
-	// fmt.Println("latency_list:", all_latencies)
 
 	time.Sleep(10 * time.Second)
 
@@ -258,7 +267,7 @@ func read(client Client, serverId uint64) server.Message {
 		reply.C2S_Client_Data = 0
 		reply.C2S_Server_Id = serverId
 		reply.C2S_Client_VersionVector = client.ReadVersionVector
-	} else if client.SessionSemantic == 4 { // RYW
+	} else if client.SessionSemantic == 4 { // RMW
 		reply.MessageType = 0
 		reply.C2S_Client_Id = client.Id
 		reply.C2S_Client_OperationType = 0
@@ -279,7 +288,7 @@ func read(client Client, serverId uint64) server.Message {
 
 func write(client Client, serverId uint64, value uint64) server.Message {
 	var reply = server.Message{}
-	if client.SessionSemantic == 0 || client.SessionSemantic == 3 || client.SessionSemantic == 4 { // Eventual MR RYW
+	if client.SessionSemantic == 0 || client.SessionSemantic == 3 || client.SessionSemantic == 4 { // Eventual MR RMW
 		reply.MessageType = 0
 		reply.C2S_Client_Id = client.Id
 		reply.C2S_Client_OperationType = 1

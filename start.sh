@@ -79,16 +79,16 @@ run_command $SES 3 "ssh srg05"
 
 sleep 1
 
-run_command $SES 0 "cd session_semantics"
-run_command $SES 0 "go run main.go 0 server 0 500"
+# run_command $SES 0 "cd session_semantics"
+# run_command $SES 0 "go run main.go 0 server 0 500"
 
-run_command $SES 1 "cd session_semantics"
-run_command $SES 1 "go run main.go 0 server 1 500"
+# run_command $SES 1 "cd session_semantics"
+# run_command $SES 1 "go run main.go 0 server 1 500"
 
-run_command $SES 2 "cd session_semantics"
-run_command $SES 2 "go run main.go 0 server 2 500"
+# run_command $SES 2 "cd session_semantics"
+# run_command $SES 2 "go run main.go 0 server 2 500"
 
-run_command $SES 3 "cd session_semantics"
-run_command $SES 3 "go run main.go 0 client generateGraphs/compareSessionSemantics/config.json 32 30 5"
+# run_command $SES 3 "cd session_semantics"
+# run_command $SES 3 "go run main.go 0 client config_files/PinnedRoundRobin.json 32 30 5 95"
 
 attach_session $SES
