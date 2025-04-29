@@ -2,10 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
 	"strings"
+	"runtime/debug"
+	// "runtime/pprof"
+	// "time"
 
 	"github.com/alanwang67/session_semantics/client"
 	"github.com/alanwang67/session_semantics/protocol"
@@ -19,11 +23,20 @@ func processAddressString(address string, n uint64) string {
 }
 
 func main() {
+	debug.SetGCPercent(-1)
+	// fmt.Println("We have disabled the GC!")
+
+	// f, _ := os.Create("cpu.pprof" + os.Args[2] + os.Args[3])
+
+	// pprof.StartCPUProfile(f)
+	// defer pprof.StopCPUProfile()
+
 	config, _ := os.ReadFile("config.json")
 
 	portOffSet, _ := strconv.ParseUint(os.Args[1], 10, 64)
 
 	var data map[string]interface{}
+
 	json.Unmarshal(config, &data)
 
 	servers := make([]*protocol.Connection, len(data["servers"].([]interface{})))
@@ -41,44 +54,34 @@ func main() {
 
 	switch os.Args[2] {
 	case "client":
-		// first arugment is path to program
-		if len(os.Args) < 8 {
-			log.Fatalf("usage: go run main.go _ client [threads] [numberOfOperations] [sessionSemantic] [randomServer] [writeServers] [readServers]")
-			return
-		}
+		fileLocation := os.Args[3]
+		clientConfig, _ := os.ReadFile(fileLocation)
 
-		threads, _ := strconv.ParseUint(os.Args[3], 10, 64)
-		numberOfOperations, _ := strconv.ParseUint(os.Args[4], 10, 64)
-		sessionSemantic, _ := strconv.ParseUint(os.Args[5], 10, 64)
-		randomServer, _ := strconv.ParseBool(os.Args[6])
+		var data map[string]interface{}
+		json.Unmarshal(clientConfig, &data)
 
-		workload := make([]uint64, numberOfOperations)
-		i := uint64(0)
-		for i < uint64(len(workload)) {
-			workload[i] = uint64(1)
-			i += 1
-		}
-
-		writeServer := make([]uint64, threads)
-		readServer := make([]uint64, threads)
-
-		i = uint64(0)
-		for i < uint64(threads) {
-			writeServer[i] = 0
-			readServer[i] = 0
-			i++
-		}
+		threads, _ := strconv.ParseUint(os.Args[4], 10, 64)
+		time, _ := strconv.ParseUint(os.Args[5], 10, 64)
+		sessionSemantic, _ := strconv.ParseUint(os.Args[6], 10, 64)
+		workload, _ := strconv.ParseUint(os.Args[7], 10, 64)
+		switchServer := uint64(data["SwitchServer"].(float64))
+		primaryBackUpRoundRobin := data["PrimaryBackUpRoundRobin"].(bool)
+		primaryBackupRandom := data["PrimaryBackupRandom"].(bool)
+		gossipRandom := data["GossipRandom"].(bool)
+		pinnedRoundRobin := data["PinnedRoundRobin"].(bool)
 
 		conf := client.ConfigurationInfo{
-			Threads:            threads,
-			NumberOfOperations: numberOfOperations,
-			SessionSemantic:    sessionSemantic,
-			Workload:           workload,
-			RandomServer:       randomServer,
-			WriteServer:        writeServer,
-			ReadServer:         readServer,
+			Threads:                 threads,
+			SessionSemantic:         sessionSemantic,
+			Time:                    time,
+			SwitchServer:            switchServer,
+			Workload:                workload,
+			PrimaryBackUpRoundRobin: primaryBackUpRoundRobin,
+			PrimaryBackupRandom:     primaryBackupRandom,
+			GossipRandom:            gossipRandom,
+			PinnedRoundRobin:        pinnedRoundRobin,
 		}
-
+		fmt.Printf("%+v\n", conf)
 		client.Start(conf, servers)
 	case "server":
 		if len(os.Args) < 4 {
@@ -89,7 +92,21 @@ func main() {
 
 		gossipInterval, _ := strconv.ParseUint(os.Args[4], 10, 64)
 
+		// go func() {
 		server.Start(server.New(id, servers[id], servers, gossipInterval))
+		// }()
+
+		// time.Sleep(60 * time.Second)
+		// n := time.Now()
+
+		// for {
+		// 	if time.Since(n) > time.Duration(5*time.Second) {
+		// 		break
+		// 	}
+		// }
+
+		// pprof.StopCPUProfile()
+		// server.Start(server.New(id, servers[id], servers, gossipInterval))
 	default:
 		log.Fatalf("unknown command: %s", os.Args[1])
 	}

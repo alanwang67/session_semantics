@@ -1,0 +1,6 @@
+{40 5 30 1000 5 false false false true}
+threads 40
+total_operations: 8115842 ops
+average_time: 35 sec
+throughput: 231880 ops/sec
+latency: 194 us

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	// "sort"
+	"math/rand/v2"
 	"time"
 
 	"github.com/alanwang67/session_semantics/protocol"
@@ -79,9 +81,9 @@ func New(id uint64, self *protocol.Connection, peers []*protocol.Connection, gos
 		Clients:                sync.Map{},
 		UnsatisfiedRequests:    make([]Message, 0),
 		VectorClock:            make([]uint64, len(peers)),
-		OperationsPerformed:    make([]Operation, 0),
+		OperationsPerformed:    make([]Operation, 0, 100000),
 		MyOperations:           make([]Operation, 0),
-		PendingOperations:      make([]Operation, 0),
+		PendingOperations:      make([]Operation, 0, 100000),
 		GossipAcknowledgements: make([]uint64, len(peers)),
 		GossipInterval:         gossipInterval,
 	}
@@ -198,38 +200,13 @@ func sortedInsert(s []Operation, value Operation) []Operation {
 	index := binarySearch(s, value)
 	if uint64(len(s)) == index {
 		return append(s, value)
+	} else if equalOperations(s[index], value) {
+		return s
 	} else {
 		right := append([]Operation{value}, s[index:]...)
 		result := append(s[:index], right...)
 		return result
 	}
-}
-
-func mergeOperations(l1 []Operation, l2 []Operation) []Operation {
-	if (len(l1) == 0) && (len(l2) == 0) {
-		return make([]Operation, 0)
-	}
-
-	var output = append([]Operation{}, l1...)
-	var i = uint64(0)
-	var l = uint64(len(l2))
-
-	for i < l {
-		output = sortedInsert(output, l2[i])
-		i++
-	}
-
-	var prev = uint64(1)
-	var curr = uint64(1)
-	for curr < uint64(len(output)) {
-		if !equalOperations(output[curr-1], output[curr]) {
-			output[prev] = output[curr]
-			prev = prev + 1
-		}
-		curr = curr + 1
-	}
-
-	return output[:prev]
 }
 
 func deleteAtIndexOperation(l []Operation, index uint64) []Operation {
@@ -256,19 +233,45 @@ func receiveGossip(server Server, request Message) Server {
 		return server
 	}
 
-	server.PendingOperations = mergeOperations(server.PendingOperations, request.S2S_Gossip_Operations)
-
 	var i = uint64(0)
 
-	for i < uint64(len(server.PendingOperations)) {
-		if oneOffVersionVector(server.VectorClock, server.PendingOperations[i].VersionVector) {
-			server.OperationsPerformed = mergeOperations(server.OperationsPerformed, []Operation{server.PendingOperations[i]})
-			server.VectorClock = maxTS(server.VectorClock, server.PendingOperations[i].VersionVector)
-			server.PendingOperations = deleteAtIndexOperation(server.PendingOperations, i)
-			continue
+	for i < uint64(len(request.S2S_Gossip_Operations)) {
+		if oneOffVersionVector(server.VectorClock, request.S2S_Gossip_Operations[i].VersionVector) {
+			server.OperationsPerformed = sortedInsert(server.OperationsPerformed, request.S2S_Gossip_Operations[i])
+			server.VectorClock = maxTS(server.VectorClock, request.S2S_Gossip_Operations[i].VersionVector)
+		} else if compareVersionVector(server.VectorClock, request.S2S_Gossip_Operations[i].VersionVector) {
+			i = i + 1
+			continue 
+		} else {
+			server.PendingOperations = sortedInsert(server.PendingOperations, request.S2S_Gossip_Operations[i])
 		}
 		i = i + 1
 	}
+
+	i = uint64(0)
+	seen := make([]uint64, 0)
+	for i < uint64(len(server.PendingOperations)) {
+		if oneOffVersionVector(server.VectorClock, server.PendingOperations[i].VersionVector) {
+			server.OperationsPerformed = sortedInsert(server.OperationsPerformed, server.PendingOperations[i])
+			server.VectorClock = maxTS(server.VectorClock, server.PendingOperations[i].VersionVector)
+			seen = append(seen, i)
+		}
+		i = i + 1
+	}
+
+	i = uint64(0)
+	var j = uint64(0)
+	var output = make([]Operation, 0)
+	for i < uint64(len(server.PendingOperations)) {
+		if j < uint64(len(seen)) && i == seen[j] {
+			j = j + 1
+		} else {
+			output = append(output, server.PendingOperations[i])
+		}
+		i = i + 1
+	}
+
+	server.PendingOperations = output
 
 	return server
 }
@@ -301,32 +304,33 @@ func processClientRequest(server Server, request Message) (bool, Server, Message
 		reply.MessageType = 4
 		reply.S2C_Client_OperationType = 0
 		reply.S2C_Client_Data = getDataFromOperationLog(server.OperationsPerformed)
-		reply.S2C_Client_VersionVector = server.VectorClock
+		reply.S2C_Client_VersionVector = append(make([]uint64, 0), server.VectorClock...)
 		reply.S2C_Server_Id = server.Id
 		reply.S2C_Client_Number = request.C2S_Client_Id
 
 		return true, server, reply
 	} else {
-		server.VectorClock[server.Id] += 1
+		var s = server
+		s.VectorClock[server.Id] += 1
 
-		server.OperationsPerformed = sortedInsert(server.OperationsPerformed, Operation{
-			VersionVector: append([]uint64(nil), server.VectorClock...),
+		s.OperationsPerformed = sortedInsert(s.OperationsPerformed, Operation{
+			VersionVector: append([]uint64(nil), s.VectorClock...),
 			Data:          request.C2S_Client_Data,
 		})
 
-		server.MyOperations = sortedInsert(server.MyOperations, Operation{
-			VersionVector: append([]uint64(nil), server.VectorClock...),
+		s.MyOperations = sortedInsert(s.MyOperations, Operation{
+			VersionVector: append([]uint64(nil), s.VectorClock...),
 			Data:          request.C2S_Client_Data,
 		})
 
 		reply.MessageType = 4
 		reply.S2C_Client_OperationType = 1
 		reply.S2C_Client_Data = 0
-		reply.S2C_Client_VersionVector = append([]uint64(nil), server.VectorClock...)
-		reply.S2C_Server_Id = server.Id
+		reply.S2C_Client_VersionVector = append(make([]uint64, 0), s.VectorClock...)
+		reply.S2C_Server_Id = s.Id
 		reply.S2C_Client_Number = request.C2S_Client_Id
 
-		return true, server, reply
+		return true, s, reply
 	}
 }
 
@@ -336,10 +340,7 @@ func processRequest(server Server, request Message) (Server, []Message) {
 	if request.MessageType == 0 {
 		var succeeded = false
 		var reply = Message{}
-		if len(request.C2S_Client_VersionVector) == 0 {
-			// fmt.Println(request)
-			panic(request)
-		}
+		
 		succeeded, s, reply = processClientRequest(s, request)
 		if succeeded {
 			outGoingRequests = append(outGoingRequests, reply)
@@ -348,11 +349,11 @@ func processRequest(server Server, request Message) (Server, []Message) {
 		}
 	} else if request.MessageType == 1 {
 		s = receiveGossip(s, request)
-		outGoingRequests = append(outGoingRequests,
-			Message{MessageType: 2,
-				S2S_Acknowledge_Gossip_Sending_ServerId:   s.Id,
-				S2S_Acknowledge_Gossip_Receiving_ServerId: request.S2S_Gossip_Sending_ServerId,
-				S2S_Acknowledge_Gossip_Index:              request.S2S_Gossip_Index})
+		// outGoingRequests = append(outGoingRequests,
+		// 	Message{MessageType: 2,
+		// 		S2S_Acknowledge_Gossip_Sending_ServerId:   s.Id,
+		// 		S2S_Acknowledge_Gossip_Receiving_ServerId: request.S2S_Gossip_Sending_ServerId,
+		// 		S2S_Acknowledge_Gossip_Index:              request.S2S_Gossip_Index})
 
 		var i = uint64(0)
 		var reply = Message{}
@@ -377,7 +378,8 @@ func processRequest(server Server, request Message) (Server, []Message) {
 				index := uint64(i)
 				operations := getGossipOperations(s, index)
 				if uint64(len(operations)) != uint64(0) {
-
+					server.GossipAcknowledgements[index] = uint64(len(s.MyOperations))
+					
 					outGoingRequests = append(outGoingRequests,
 						Message{MessageType: 1,
 							S2S_Gossip_Sending_ServerId:   s.Id,
@@ -441,6 +443,7 @@ func handler(s *NServer, request *Message) error {
 			i++
 		}
 	}()
+
 	return nil
 }
 
@@ -475,7 +478,6 @@ func Start(s *NServer) error {
 	}()
 
 	go func() {
-		// will this work from just being in scope?
 		i := uint64(0)
 		for i < uint64(len(s.Peers)) {
 			if i != s.Id {
@@ -499,7 +501,7 @@ func Start(s *NServer) error {
 
 	go func() error {
 		for {
-			ms := s.GossipInterval
+			ms := s.GossipInterval + uint64((rand.IntN(500)))
 
 			time.Sleep(time.Duration(ms) * time.Microsecond)
 
@@ -525,8 +527,6 @@ func Start(s *NServer) error {
 			return nil
 		}
 
-		// fmt.Println(conn.RemoteAddr())
-
 		go func(s *NServer, c net.Conn) error {
 			dec := gob.NewDecoder(c)
 
@@ -540,7 +540,6 @@ func Start(s *NServer) error {
 				}
 
 				s.mu.Lock()
-
 				if m.MessageType == 0 {
 					_, ok := s.Clients.Load(m.C2S_Client_Id)
 					if !ok {
@@ -550,7 +549,8 @@ func Start(s *NServer) error {
 				}
 
 				if m.MessageType == 4 {
-					fmt.Println("DONE")
+					fmt.Println(s.OperationsPerformed)
+					// fmt.Println("Done")
 				}
 
 				handler(s, &m)
