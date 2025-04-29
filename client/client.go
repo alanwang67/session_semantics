@@ -1,204 +1,356 @@
 package client
 
 import (
+	"encoding/gob"
+	"fmt"
 	"math/rand/v2"
 	"net"
-	"net/rpc"
 	"sync"
 	"time"
 
 	"github.com/alanwang67/session_semantics/protocol"
 	"github.com/alanwang67/session_semantics/server"
+	// "github.com/montanaflynn/stats"
 )
 
-type RpcClient struct {
-	Id              uint64
-	Address         string
-	Self            *protocol.Connection
-	Servers         []*protocol.Connection
-	VersionVector   []uint64
-	RequestNumber   uint64
-	SessionSemantic uint64
-	Ack             bool
-	mu              sync.Mutex
+type ConfigurationInfo struct {
+	Threads                 uint64
+	SessionSemantic         uint64
+	Time                    uint64
+	SwitchServer            uint64
+	Workload                uint64
+	PrimaryBackUpRoundRobin bool
+	PrimaryBackupRandom     bool
+	GossipRandom            bool
+	PinnedRoundRobin        bool
+}
+
+type NClient struct {
+	Id                 uint64
+	ServerDecoders     []*gob.Decoder
+	ServerEncoder      []*gob.Encoder
+	WriteVersionVector []uint64
+	ReadVersionVector  []uint64
+	SessionSemantic    uint64
 }
 
 type Client struct {
-	Id              uint64
-	NumberOfServers uint64
-	VersionVector   []uint64
-	SessionSemantic uint64
-	Ack             bool
+	Id                 uint64
+	NumberOfServers    uint64
+	WriteVersionVector []uint64
+	ReadVersionVector  []uint64
+	SessionSemantic    uint64
 }
 
-func New(id uint64, address string, sessionSemantic uint64, self *protocol.Connection, servers []*protocol.Connection) *RpcClient {
-	return &RpcClient{
-		Id:              id,
-		Address:         address,
-		Self:            self,
-		Servers:         servers,
-		SessionSemantic: sessionSemantic,
-		Ack:             true,
-		VersionVector:   make([]uint64, len(servers)),
-	}
-}
-
-func (c *RpcClient) Start() error {
-
-	l, _ := net.Listen(c.Self.Network, c.Self.Address)
-	defer l.Close()
-
-	rpc.Register(c)
-
-	go func() {
-		for {
-			rpc.Accept(l)
-		}
-	}()
-
+func New(id uint64, sessionSemantic uint64, servers []*protocol.Connection) *NClient {
 	i := uint64(0)
-	c.mu.Lock()
-	for i < uint64(1000) {
-		// fmt.Println(i)
-		for !c.Ack {
-			c.mu.Unlock()
-			time.Sleep(1 * time.Millisecond)
-			c.mu.Lock()
+	serverDecoders := make([]*gob.Decoder, len(servers))
+	serverEncoders := make([]*gob.Encoder, len(servers))
+
+	for i < uint64(len(servers)) {
+		c, err := net.Dial(servers[i].Network, servers[i].Address)
+		// err = c.SetDeadline(time.Now().Add(35 * time.Second))
+
+		if err != nil {
+			fmt.Println(err)
 		}
-		c.mu.Unlock()
-
-		v := uint64(rand.Int64())
-		// fmt.Println("Write Value: ", v)
-		c.requestHandler(uint64(rand.Uint64()%uint64(2)), uint64(rand.Uint64()%uint64((len(c.Servers)))), v, server.Message{})
-		c.mu.Lock()
-		i++
-	}
-	c.mu.Unlock()
-
-	time.Sleep(1000 * time.Millisecond)
-
-	i = uint64(0)
-
-	for i < uint64(len(c.Servers)) {
-		clientRequest := server.Message{}
-
-		clientReply := server.Message{}
-
-		h, _ := rpc.Dial(c.Servers[i].Network, c.Servers[i].Address)
-
-		h.Call("RpcServer.PrintData", &clientRequest, &clientReply)
-
-		c.requestHandler(0, i, 0, server.Message{})
-
-		i++
+		serverDecoders[i] = gob.NewDecoder(c)
+		serverEncoders[i] = gob.NewEncoder(c)
+		i += 1
 	}
 
-	for {
-
+	return &NClient{
+		Id:                 id,
+		ServerDecoders:     serverDecoders,
+		ServerEncoder:      serverEncoders,
+		WriteVersionVector: make([]uint64, len(servers)),
+		ReadVersionVector:  make([]uint64, len(servers)),
+		SessionSemantic:    sessionSemantic,
 	}
 }
 
-func write(client Client, serverId uint64, value uint64) server.Message {
-	if client.SessionSemantic == 0 || client.SessionSemantic == 1 || client.SessionSemantic == 4 { // WFR MW Causal
-		return server.Message{
-			MessageType:              0,
-			C2S_Client_Id:            client.Id,
-			C2S_Client_OperationType: 1,
-			C2S_Client_Data:          value,
-			C2S_Server_Id:            serverId,
-			C2S_Client_VersionVector: client.VersionVector,
-		}
-	} else {
-		return server.Message{
-			MessageType:              0,
-			C2S_Client_Id:            client.Id,
-			C2S_Client_OperationType: 1,
-			C2S_Client_Data:          value,
-			C2S_Server_Id:            serverId,
-			C2S_Client_VersionVector: make([]uint64, client.NumberOfServers),
-		}
+func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
+	i := uint64(0)
+
+	var NClients = make([]*NClient, config.Threads)
+
+	for i < uint64(config.Threads) {
+		NClients[i] = New(i, config.SessionSemantic, servers)
+		i += 1
 	}
+
+	off_set := 5
+	lower_bound := time.Duration(off_set) * time.Second
+	upper_bound := time.Duration(uint64(off_set)+config.Time) * time.Second
+
+	var l sync.Mutex
+
+	set := false
+	avg_time := float64(0)
+	total_latency := time.Duration(0 * time.Microsecond)
+	ops := uint64(0)
+
+	var wg sync.WaitGroup
+	var barrier sync.WaitGroup
+
+	wg.Add(len(NClients))
+	barrier.Add(len(NClients))
+	i = uint64(0)
+	for i < uint64(len(NClients)) {
+		j := i
+		go func(c *NClient) error {
+			index := uint64(0)
+			serverId := uint64(0)
+			readServerId := uint64(0)
+			writeServerId := uint64(0)
+			var start_time time.Time
+			var end_time time.Time
+			var operation_start uint64
+			var operation_end uint64
+			var operation uint64
+			var temp time.Duration 
+
+			r := rand.New(rand.NewPCG(1, 2))
+			z := rand.NewZipf(r, 3, 10, 100)
+			barrier.Done()
+			barrier.Wait()
+			defer wg.Done()
+
+			log_time := false
+			initial_time := time.Now()
+			latency := time.Duration(0)
+
+			for {
+				if uint64(rand.IntN(99)) < config.Workload {
+					operation = uint64(1)
+				} else {
+					operation = uint64(0)
+				}
+
+				if config.PrimaryBackUpRoundRobin {
+					if operation == uint64(0) {
+						readServerId = c.Id % uint64(len(servers)) 
+					} else if operation == uint64(1) {
+						writeServerId = uint64(0)
+					}
+				} else if config.PrimaryBackupRandom {
+					if (index%config.SwitchServer == 0) {
+						readServerId = uint64(rand.IntN(3)) 
+					} 
+					if operation == uint64(1) {
+						writeServerId = uint64(0)
+					}
+				} else if config.GossipRandom && (index%config.SwitchServer == 0) {
+					v := uint64(rand.IntN(3))
+					writeServerId = v
+					readServerId = v 
+				} else if config.PinnedRoundRobin {
+					readServerId = c.Id % 3
+					writeServerId = c.Id % 3
+				}
+
+				if !log_time && time.Since(initial_time) > lower_bound {
+					start_time = time.Now()
+					operation_start = index
+					log_time = true
+				}
+				if log_time && time.Since(start_time) > (upper_bound) {
+					end_time = time.Now()
+					operation_end = index
+					break
+				}
+
+				v := z.Uint64()
+
+				outGoingMessage := handler(c, operation, serverId, v, server.Message{})
+
+				var m server.Message
+
+				sent_time := time.Now()
+
+				if operation == uint64(0) {
+					serverId = readServerId
+				} else {
+					serverId = writeServerId
+				}
+
+				err := c.ServerEncoder[serverId].Encode(&outGoingMessage)
+				if err != nil {
+					fmt.Print(err)
+					// return err
+				}
+
+				err = c.ServerDecoders[serverId].Decode(&m)
+				if err != nil {
+					fmt.Print(err)
+					// return err
+				}
+				
+				temp = (time.Since(sent_time))
+				latency = latency + temp 
+
+				handler(c, 2, 0, 0, m)
+				index++
+			}
+
+			l.Lock()
+			if !set {
+				avg_time = (end_time.Sub(start_time).Seconds())
+				set = true
+			} else {
+				avg_time = (avg_time + (end_time.Sub(start_time).Seconds())) / 2
+			}
+			ops += operation_end - operation_start
+			total_latency = total_latency + latency
+			l.Unlock()
+			return nil
+		}(NClients[j])
+
+		i += 1
+	}
+
+	wg.Wait()
+
+	fmt.Println("threads", config.Threads)
+	fmt.Println("total_operations:", int(ops), "ops")
+	fmt.Println("average_time:", int(avg_time), "sec")
+	fmt.Println("throughput:", int(float64(ops)/(avg_time)), "ops/sec")
+	fmt.Println("latency:", int(float64(total_latency.Microseconds())/float64(ops)), "us")
+
+	time.Sleep(10 * time.Second)
+
+	index := uint64(0)
+	for index < uint64(len(servers)) {
+		outGoingMessage := server.Message{MessageType: 4}
+		err := NClients[0].ServerEncoder[index].Encode(&outGoingMessage)
+		if err != nil {
+			fmt.Print(err)
+		}
+		index++
+	}
+
+	return nil
+}
+
+func maxTwoInts(x uint64, y uint64) uint64 {
+	if x > y {
+		return x
+	} else {
+		return y
+	}
+}
+
+func maxTS(t1 []uint64, t2 []uint64) []uint64 {
+	var i = uint64(0)
+	var length = uint64(len(t1))
+	var output = make([]uint64, len(t1))
+	for i < length {
+		output[i] = maxTwoInts(t1[i], t2[i])
+		i += 1
+	}
+	return output
 }
 
 func read(client Client, serverId uint64) server.Message {
-	if client.SessionSemantic == 2 || client.SessionSemantic == 3 || client.SessionSemantic == 4 { // MR RYW Causal
-		return server.Message{
-			MessageType:              0,
-			C2S_Client_Id:            client.Id,
-			C2S_Client_OperationType: 0,
-			C2S_Server_Id:            serverId,
-			C2S_Client_VersionVector: client.VersionVector,
-		}
-	} else {
-		return server.Message{
-			MessageType:              0,
-			C2S_Client_Id:            client.Id,
-			C2S_Client_OperationType: 0,
-			C2S_Server_Id:            serverId,
-			C2S_Client_VersionVector: make([]uint64, client.NumberOfServers),
-		}
+	var reply = server.Message{}
+	if client.SessionSemantic == 0 || client.SessionSemantic == 1 || client.SessionSemantic == 2 { // Eventual WFR MW
+		reply.MessageType = 0
+		reply.C2S_Client_Id = client.Id
+		reply.C2S_Client_OperationType = 0
+		reply.C2S_Client_Data = 0
+		reply.C2S_Server_Id = serverId
+		reply.C2S_Client_VersionVector = make([]uint64, client.NumberOfServers)
+	} else if client.SessionSemantic == 3 { // MR
+		reply.MessageType = 0
+		reply.C2S_Client_Id = client.Id
+		reply.C2S_Client_OperationType = 0
+		reply.C2S_Client_Data = 0
+		reply.C2S_Server_Id = serverId
+		reply.C2S_Client_VersionVector = client.ReadVersionVector
+	} else if client.SessionSemantic == 4 { // RMW
+		reply.MessageType = 0
+		reply.C2S_Client_Id = client.Id
+		reply.C2S_Client_OperationType = 0
+		reply.C2S_Client_Data = 0
+		reply.C2S_Server_Id = serverId
+		reply.C2S_Client_VersionVector = client.WriteVersionVector
+	} else if client.SessionSemantic == 5 { // Causal
+		reply.MessageType = 0
+		reply.C2S_Client_Id = client.Id
+		reply.C2S_Client_OperationType = 0
+		reply.C2S_Client_Data = 0
+		reply.C2S_Server_Id = serverId
+		reply.C2S_Client_VersionVector = maxTS(client.WriteVersionVector, client.ReadVersionVector)
 	}
+
+	return reply
+}
+
+func write(client Client, serverId uint64, value uint64) server.Message {
+	var reply = server.Message{}
+	if client.SessionSemantic == 0 || client.SessionSemantic == 3 || client.SessionSemantic == 4 { // Eventual MR RMW
+		reply.MessageType = 0
+		reply.C2S_Client_Id = client.Id
+		reply.C2S_Client_OperationType = 1
+		reply.C2S_Client_Data = value
+		reply.C2S_Server_Id = serverId
+		reply.C2S_Client_VersionVector = make([]uint64, client.NumberOfServers)
+	} else if client.SessionSemantic == 1 { // WFR
+		reply.MessageType = 0
+		reply.C2S_Client_Id = client.Id
+		reply.C2S_Client_OperationType = 1
+		reply.C2S_Client_Data = value
+		reply.C2S_Server_Id = serverId
+		reply.C2S_Client_VersionVector = client.ReadVersionVector
+	} else if client.SessionSemantic == 2 { // MW
+		reply.MessageType = 0
+		reply.C2S_Client_Id = client.Id
+		reply.C2S_Client_OperationType = 1
+		reply.C2S_Client_Data = value
+		reply.C2S_Server_Id = serverId
+		reply.C2S_Client_VersionVector = client.WriteVersionVector
+	} else if client.SessionSemantic == 5 { // Causal
+		reply.MessageType = 0
+		reply.C2S_Client_Id = client.Id
+		reply.C2S_Client_OperationType = 1
+		reply.C2S_Client_Data = value
+		reply.C2S_Server_Id = serverId
+		reply.C2S_Client_VersionVector = maxTS(client.WriteVersionVector, client.ReadVersionVector)
+	}
+
+	return reply
 }
 
 func processRequest(client Client, requestType uint64, serverId uint64, value uint64, ackMessage server.Message) (Client, server.Message) {
+	var msg = server.Message{}
 	if requestType == 0 {
-		client.Ack = false
-		return client, write(client, serverId, value)
+		msg = read(client, serverId)
 	} else if requestType == 1 {
-		client.Ack = false
-		return client, read(client, serverId)
+		msg = write(client, serverId, value)
 	} else if requestType == 2 {
 		if ackMessage.S2C_Client_OperationType == 0 {
-			if client.SessionSemantic == 2 || client.SessionSemantic == 3 || client.SessionSemantic == 4 {
-				client.VersionVector = ackMessage.S2C_Client_VersionVector
-			}
+			client.ReadVersionVector = ackMessage.S2C_Client_VersionVector
 		}
-
 		if ackMessage.S2C_Client_OperationType == 1 {
-			if client.SessionSemantic == 0 || client.SessionSemantic == 1 || client.SessionSemantic == 4 {
-				client.VersionVector = ackMessage.S2C_Client_VersionVector
-			}
+			client.WriteVersionVector = ackMessage.S2C_Client_VersionVector
 		}
-		client.Ack = true
 		return client, server.Message{}
 	}
 
-	panic("Unsupported request type")
+	return client, msg
 }
 
-func (c *RpcClient) requestHandler(requestType uint64, serverId uint64, value uint64, ackMessage server.Message) {
-	c.mu.Lock()
-
+func handler(c *NClient, requestType uint64, serverId uint64, value uint64, ackMessage server.Message) server.Message {
 	nc, outGoingMessage := processRequest(Client{
-		Id:              c.Id,
-		NumberOfServers: uint64(len(c.Servers)),
-		VersionVector:   c.VersionVector,
-		SessionSemantic: c.SessionSemantic,
-		Ack:             c.Ack}, requestType, serverId, value, ackMessage)
+		Id:                 c.Id,
+		NumberOfServers:    uint64(len(c.ServerEncoder)),
+		WriteVersionVector: c.WriteVersionVector,
+		ReadVersionVector:  c.ReadVersionVector,
+		SessionSemantic:    c.SessionSemantic,
+	}, requestType, serverId, value, ackMessage)
 
-	c.Ack = nc.Ack
+	c.WriteVersionVector = nc.WriteVersionVector
+	c.ReadVersionVector = nc.ReadVersionVector
 
-	c.mu.Unlock()
-
-	protocol.Invoke(*c.Servers[serverId], "RpcServer.RpcHandler", &outGoingMessage, &server.Message{})
-}
-
-func (c *RpcClient) AcknowledgeMessage(request *server.Message, reply *server.Message) error {
-	c.mu.Lock()
-	// if request.MessageType == 4 && request.S2C_Client_OperationType == 0 {
-	// 	fmt.Println("Read value: ", request.S2C_Client_Data)
-	// }
-	nc, _ := processRequest(Client{
-		Id:              c.Id,
-		NumberOfServers: uint64(len(c.Servers)),
-		VersionVector:   c.VersionVector,
-		SessionSemantic: c.SessionSemantic,
-		Ack:             c.Ack}, 2, 0, 0, *request)
-
-	c.VersionVector = nc.VersionVector
-	c.Ack = nc.Ack
-
-	c.mu.Unlock()
-
-	return nil
+	return outGoingMessage
 }

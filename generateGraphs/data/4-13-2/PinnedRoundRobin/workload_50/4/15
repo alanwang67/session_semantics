@@ -1,0 +1,6 @@
+{Threads:72 SessionSemantic:4 Time:10 SwitchServer:10000 Workload:50 PrimaryBackUpRoundRobin:false PrimaryBackupRandom:false GossipRandom:false PinnedRoundRobin:true}
+threads 72
+total_operations: 3523383 ops
+average_time: 15 sec
+throughput: 234891 ops/sec
+latency: 406 us
