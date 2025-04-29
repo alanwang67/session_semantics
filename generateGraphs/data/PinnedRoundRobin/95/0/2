@@ -1,6 +1,0 @@
-{16 0 30 1000 95 false false false true}
-threads 16
-total_operations: 816524 ops
-average_time: 35 sec
-throughput: 23288 ops/sec
-latency: 835 us

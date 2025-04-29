@@ -1,6 +1,0 @@
-{40 4 30 1000000 95 true false false false}
-threads 40
-total_operations: 4805973 ops
-average_time: 43 sec
-throughput: 111723 ops/sec
-latency: 377 us

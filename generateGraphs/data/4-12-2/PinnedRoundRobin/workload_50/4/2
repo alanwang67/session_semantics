@@ -1,7 +1,0 @@
-{Threads:4 SessionSemantic:4 Time:30 SwitchServer:1000 Workload:50 PrimaryBackUpRoundRobin:false PrimaryBackupRandom:false GossipRandom:false PinnedRoundRobin:true}
-read tcp 192.168.2.28:46026->192.168.2.29:10071: i/o timeoutread tcp 192.168.2.28:44460->192.168.2.30:10071: i/o timeoutread tcp 192.168.2.28:44098->192.168.2.31:10071: i/o timeoutread tcp 192.168.2.28:46056->192.168.2.29:10071: i/o timeoutthreads 4
-total_operations: 0 ops
-average_time: 0 sec
-throughput: -9223372036854775808 ops/sec
-latency: -9223372036854775808 us
-write tcp 192.168.2.28:46026->192.168.2.29:10071: i/o timeoutwrite tcp 192.168.2.28:44444->192.168.2.30:10071: i/o timeoutwrite tcp 192.168.2.28:44090->192.168.2.31:10071: i/o timeout
