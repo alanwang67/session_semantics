@@ -3,10 +3,9 @@ package server
 import (
 	"encoding/gob"
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"sync"
-	// "sort"
-	"math/rand/v2"
 	"time"
 
 	"github.com/alanwang67/session_semantics/protocol"
@@ -241,7 +240,7 @@ func receiveGossip(server Server, request Message) Server {
 			server.VectorClock = maxTS(server.VectorClock, request.S2S_Gossip_Operations[i].VersionVector)
 		} else if compareVersionVector(server.VectorClock, request.S2S_Gossip_Operations[i].VersionVector) {
 			i = i + 1
-			continue 
+			continue
 		} else {
 			server.PendingOperations = sortedInsert(server.PendingOperations, request.S2S_Gossip_Operations[i])
 		}
@@ -340,7 +339,7 @@ func processRequest(server Server, request Message) (Server, []Message) {
 	if request.MessageType == 0 {
 		var succeeded = false
 		var reply = Message{}
-		
+
 		succeeded, s, reply = processClientRequest(s, request)
 		if succeeded {
 			outGoingRequests = append(outGoingRequests, reply)
@@ -349,11 +348,6 @@ func processRequest(server Server, request Message) (Server, []Message) {
 		}
 	} else if request.MessageType == 1 {
 		s = receiveGossip(s, request)
-		// outGoingRequests = append(outGoingRequests,
-		// 	Message{MessageType: 2,
-		// 		S2S_Acknowledge_Gossip_Sending_ServerId:   s.Id,
-		// 		S2S_Acknowledge_Gossip_Receiving_ServerId: request.S2S_Gossip_Sending_ServerId,
-		// 		S2S_Acknowledge_Gossip_Index:              request.S2S_Gossip_Index})
 
 		var i = uint64(0)
 		var reply = Message{}
@@ -379,7 +373,7 @@ func processRequest(server Server, request Message) (Server, []Message) {
 				operations := getGossipOperations(s, index)
 				if uint64(len(operations)) != uint64(0) {
 					server.GossipAcknowledgements[index] = uint64(len(s.MyOperations))
-					
+
 					outGoingRequests = append(outGoingRequests,
 						Message{MessageType: 1,
 							S2S_Gossip_Sending_ServerId:   s.Id,
@@ -546,11 +540,6 @@ func Start(s *NServer) error {
 						enc := gob.NewEncoder(c)
 						s.Clients.Store(m.C2S_Client_Id, enc)
 					}
-				}
-
-				if m.MessageType == 4 {
-					fmt.Println(s.OperationsPerformed)
-					// fmt.Println("Done")
 				}
 
 				handler(s, &m)

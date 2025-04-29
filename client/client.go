@@ -10,7 +10,6 @@ import (
 
 	"github.com/alanwang67/session_semantics/protocol"
 	"github.com/alanwang67/session_semantics/server"
-	// "github.com/montanaflynn/stats"
 )
 
 type ConfigurationInfo struct {
@@ -49,7 +48,6 @@ func New(id uint64, sessionSemantic uint64, servers []*protocol.Connection) *NCl
 
 	for i < uint64(len(servers)) {
 		c, err := net.Dial(servers[i].Network, servers[i].Address)
-		// err = c.SetDeadline(time.Now().Add(35 * time.Second))
 
 		if err != nil {
 			fmt.Println(err)
@@ -108,7 +106,7 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 			var operation_start uint64
 			var operation_end uint64
 			var operation uint64
-			var temp time.Duration 
+			var temp time.Duration
 
 			r := rand.New(rand.NewPCG(1, 2))
 			z := rand.NewZipf(r, 3, 10, 100)
@@ -129,21 +127,21 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 
 				if config.PrimaryBackUpRoundRobin {
 					if operation == uint64(0) {
-						readServerId = c.Id % uint64(len(servers)) 
+						readServerId = c.Id % uint64(len(servers))
 					} else if operation == uint64(1) {
 						writeServerId = uint64(0)
 					}
 				} else if config.PrimaryBackupRandom {
-					if (index%config.SwitchServer == 0) {
-						readServerId = uint64(rand.IntN(3)) 
-					} 
+					if index%config.SwitchServer == 0 {
+						readServerId = uint64(rand.IntN(3))
+					}
 					if operation == uint64(1) {
 						writeServerId = uint64(0)
 					}
 				} else if config.GossipRandom && (index%config.SwitchServer == 0) {
 					v := uint64(rand.IntN(3))
 					writeServerId = v
-					readServerId = v 
+					readServerId = v
 				} else if config.PinnedRoundRobin {
 					readServerId = c.Id % 3
 					writeServerId = c.Id % 3
@@ -177,17 +175,17 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 				err := c.ServerEncoder[serverId].Encode(&outGoingMessage)
 				if err != nil {
 					fmt.Print(err)
-					// return err
+					return err
 				}
 
 				err = c.ServerDecoders[serverId].Decode(&m)
 				if err != nil {
 					fmt.Print(err)
-					// return err
+					return err
 				}
-				
+
 				temp = (time.Since(sent_time))
-				latency = latency + temp 
+				latency = latency + temp
 
 				handler(c, 2, 0, 0, m)
 				index++
@@ -216,18 +214,6 @@ func Start(config ConfigurationInfo, servers []*protocol.Connection) error {
 	fmt.Println("average_time:", int(avg_time), "sec")
 	fmt.Println("throughput:", int(float64(ops)/(avg_time)), "ops/sec")
 	fmt.Println("latency:", int(float64(total_latency.Microseconds())/float64(ops)), "us")
-
-	time.Sleep(10 * time.Second)
-
-	index := uint64(0)
-	for index < uint64(len(servers)) {
-		outGoingMessage := server.Message{MessageType: 4}
-		err := NClients[0].ServerEncoder[index].Encode(&outGoingMessage)
-		if err != nil {
-			fmt.Print(err)
-		}
-		index++
-	}
 
 	return nil
 }
